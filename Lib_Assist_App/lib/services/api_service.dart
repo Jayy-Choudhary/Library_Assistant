@@ -1,10 +1,51 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // Default connection details matching your PythonAnywhere server config
   static String baseUrl = "https://jaychoudhary.pythonanywhere.com";
   static String apiKey = "jay-library-secret-key-2026";
+
+  /// Initialize and load saved connection settings from SharedPreferences
+  static Future<void> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    baseUrl = prefs.getString('api_base_url') ?? "https://jaychoudhary.pythonanywhere.com";
+    apiKey = prefs.getString('api_key') ?? "jay-library-secret-key-2026";
+  }
+
+  /// Update server connection configuration
+  static Future<void> updateConnectionSettings(String newUrl, String newKey) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('api_base_url', newUrl);
+    await prefs.setString('api_key', newKey);
+    baseUrl = newUrl;
+    apiKey = newKey;
+  }
+
+  /// Test connectivity and credentials with specific parameters
+  static Future<bool> testConnection(String url, String key) async {
+    final uri = Uri.parse("$url/api/db/call");
+    final headers = {
+      "Content-Type": "application/json",
+      "X-API-Key": key,
+    };
+    final payload = {
+      "method": "seat_counts",
+      "args": [],
+      "kwargs": {},
+    };
+    try {
+      final response = await http.post(
+        uri,
+        headers: headers,
+        body: jsonEncode(payload),
+      ).timeout(const Duration(seconds: 4));
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
 
   /// Core RPC database executor on the FastAPI cloud backend
   static Future<dynamic> _callDb(String method, {List<dynamic> args = const [], Map<String, dynamic> kwargs = const {}}) async {

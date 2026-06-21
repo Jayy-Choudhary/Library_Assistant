@@ -3,8 +3,11 @@ import 'theme/colors.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/students_screen.dart';
 import 'screens/notice_screen.dart';
+import 'services/api_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await ApiService.init();
   runApp(const LibAssistApp());
 }
 
