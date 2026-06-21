@@ -35,20 +35,47 @@ class _NoticeScreenState extends State<NoticeScreen> {
   void _startBulkWizard() {
     final unsent = _notices.where((n) => n['sent_at'] == null).toList();
     if (unsent.isEmpty) {
-      _showSnackbar("No pending notices to send.", AppColors.success);
+      if (_notices.isEmpty) {
+        _showSnackbar("No notices available in this tab.", AppColors.warning);
+        return;
+      }
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Resend Notices?'),
+          content: Text('All notices in the "${_currentFilter}" tab have already been marked as sent. Do you want to restart the wizard to send them again?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _launchWizardWithNotices(_notices);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.white),
+              child: const Text('Yes, Resend All'),
+            ),
+          ],
+        ),
+      );
       return;
     }
+    _launchWizardWithNotices(unsent);
+  }
 
+  void _launchWizardWithNotices(List<dynamic> targets) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('🚀 Choose Bulk Method'),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Select how you want to send bulk notices:'),
-            SizedBox(height: 8),
+            Text('Select how you want to send bulk notices for "${_currentFilter}" (${targets.length} total):'),
+            const SizedBox(height: 8),
           ],
         ),
         actions: [
@@ -57,7 +84,7 @@ class _NoticeScreenState extends State<NoticeScreen> {
               Navigator.pop(ctx);
               setState(() {
                 _bulkWizardChannel = "WhatsApp";
-                _bulkNotices = unsent;
+                _bulkNotices = targets;
                 _bulkWizardIndex = 0;
                 _inBulkWizard = true;
                 _isAutoSendingSMS = false;
@@ -72,7 +99,7 @@ class _NoticeScreenState extends State<NoticeScreen> {
               Navigator.pop(ctx);
               setState(() {
                 _bulkWizardChannel = "SMS";
-                _bulkNotices = unsent;
+                _bulkNotices = targets;
                 _bulkWizardIndex = 0;
                 _inBulkWizard = true;
                 _isAutoSendingSMS = false;
@@ -120,7 +147,13 @@ class _NoticeScreenState extends State<NoticeScreen> {
         await ApiService.markNoticeSent(noticeId);
         _showSnackbar("SMS sent successfully to ${notice['full_name']}! ✉️", AppColors.success);
       } catch (e) {
-        _showSnackbar("Failed to send SMS to ${notice['full_name']}: $e", AppColors.danger);
+        _showErrorDialog(
+          "Failed to send SMS to ${notice['full_name']} ($phone):\n\n$e\n\n"
+          "Please verify:\n"
+          "1. SMS permissions are granted in phone Settings -> Apps.\n"
+          "2. Device has a working SIM card with SMS pack balance."
+        );
+        return; // Halt and wait for user correction/skip
       }
 
       setState(() {
@@ -178,21 +211,32 @@ class _NoticeScreenState extends State<NoticeScreen> {
       final message = notice['message'] ?? '';
       final noticeId = notice['id'];
 
-      if (phone.isNotEmpty) {
-        String cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
-        if (cleanPhone.length == 10) {
-          cleanPhone = '91$cleanPhone';
-        }
+      if (phone.isEmpty) {
+        _stopAutoSMSLoop();
+        _showErrorDialog("Failed to send notice to ${notice['full_name']}: Mobile number is empty.");
+        break;
+      }
 
-        try {
-          await _smsChannel.invokeMethod('sendSMS', {
-            'phone': cleanPhone,
-            'message': message,
-          });
-          await ApiService.markNoticeSent(noticeId);
-        } catch (e) {
-          debugPrint("Auto SMS failed for ${notice['full_name']}: $e");
-        }
+      String cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+      if (cleanPhone.length == 10) {
+        cleanPhone = '91$cleanPhone';
+      }
+
+      try {
+        await _smsChannel.invokeMethod('sendSMS', {
+          'phone': cleanPhone,
+          'message': message,
+        });
+        await ApiService.markNoticeSent(noticeId);
+      } catch (e) {
+        _stopAutoSMSLoop();
+        _showErrorDialog(
+          "Failed to send SMS to ${notice['full_name']} ($phone):\n\n$e\n\n"
+          "Please verify:\n"
+          "1. SMS permissions are granted in phone Settings -> Apps.\n"
+          "2. Device has a working SIM card with SMS pack balance."
+        );
+        break; // Stop loop immediately on error
       }
 
       await Future.delayed(const Duration(milliseconds: 1500));
@@ -685,6 +729,28 @@ class _NoticeScreenState extends State<NoticeScreen> {
     );
   }
 
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.error_outline_rounded, color: AppColors.danger),
+            SizedBox(width: 8),
+            Text('SMS Sending Failed'),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasUnsentNotices = _notices.any((n) => n['sent_at'] == null);
@@ -698,7 +764,7 @@ class _NoticeScreenState extends State<NoticeScreen> {
               label: const Text('Gen_Msg', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
               onPressed: _showGenMsgDialog,
             ),
-          if (!_isLoading && _errorMessage == null && hasUnsentNotices && !_inBulkWizard)
+          if (!_isLoading && _errorMessage == null && _notices.isNotEmpty && !_inBulkWizard)
             IconButton(
               icon: const Icon(Icons.rocket_launch_outlined),
               tooltip: 'Bulk Send Wizard',
