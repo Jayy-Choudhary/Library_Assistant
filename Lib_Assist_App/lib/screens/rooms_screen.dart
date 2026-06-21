@@ -19,9 +19,8 @@ class _RoomsScreenState extends State<RoomsScreen> {
   List<dynamic> _allSeats = [];
   Map<String, List<dynamic>> _groupedOccupants = {};
 
-  // Room layout stats
-  int _rows = 5;
-  int _columns = 5;
+  // Cache layouts: {'A': {'rows': 5, 'columns': 5}, ...}
+  final Map<String, Map<String, int>> _roomLayouts = {};
 
   @override
   void initState() {
@@ -36,14 +35,20 @@ class _RoomsScreenState extends State<RoomsScreen> {
     });
 
     try {
-      // 1. Fetch layout size for target room
-      final layout = await ApiService.getRoomLayout(_selectedRoom);
-      
-      // 2. Fetch all seats
-      final seatsData = await ApiService.getAllSeats();
+      // Fetch layout sizes for all rooms in parallel along with seats and active students
+      final results = await Future.wait([
+        ApiService.getRoomLayout('A'),
+        ApiService.getRoomLayout('B'),
+        ApiService.getRoomLayout('C'),
+        ApiService.getAllSeats(),
+        ApiService.getStudents(filter: "Active"),
+      ]);
 
-      // 3. Fetch all active students to group them by seat
-      final studentsData = await ApiService.getStudents(filter: "Active");
+      final layoutA = results[0] as Map<String, int>;
+      final layoutB = results[1] as Map<String, int>;
+      final layoutC = results[2] as Map<String, int>;
+      final seatsData = results[3] as List<dynamic>;
+      final studentsData = results[4] as List<dynamic>;
 
       // Group active students by seat number
       final Map<String, List<dynamic>> grouped = {};
@@ -55,8 +60,9 @@ class _RoomsScreenState extends State<RoomsScreen> {
       }
 
       setState(() {
-        _rows = layout['rows'] ?? 5;
-        _columns = layout['columns'] ?? 5;
+        _roomLayouts['A'] = layoutA;
+        _roomLayouts['B'] = layoutB;
+        _roomLayouts['C'] = layoutC;
         _allSeats = seatsData;
         _groupedOccupants = grouped;
         _isLoading = false;
@@ -113,6 +119,8 @@ class _RoomsScreenState extends State<RoomsScreen> {
   @override
   Widget build(BuildContext context) {
     final filteredSeats = _getFilteredSeats();
+    final currentLayout = _roomLayouts[_selectedRoom] ?? {"rows": 5, "columns": 5, "spacing": 8};
+    final columns = currentLayout['columns'] ?? 5;
 
     return Scaffold(
       appBar: AppBar(
@@ -137,7 +145,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
                                   child: GridView.builder(
                                     padding: const EdgeInsets.all(16),
                                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: _columns > 0 ? _columns : 5,
+                                      crossAxisCount: columns > 0 ? columns : 5,
                                       crossAxisSpacing: 10.0,
                                       mainAxisSpacing: 10.0,
                                       childAspectRatio: 1.0,
@@ -193,7 +201,6 @@ class _RoomsScreenState extends State<RoomsScreen> {
                   setState(() {
                     _selectedRoom = room;
                   });
-                  _loadRoomData();
                 }
               },
             ),
@@ -205,6 +212,10 @@ class _RoomsScreenState extends State<RoomsScreen> {
 
   Widget _buildLayoutInfoSummary() {
     final filteredSeatsCount = _getFilteredSeats().length;
+    final currentLayout = _roomLayouts[_selectedRoom] ?? {"rows": 5, "columns": 5, "spacing": 8};
+    final rows = currentLayout['rows'] ?? 5;
+    final columns = currentLayout['columns'] ?? 5;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       color: AppColors.bg,
@@ -216,7 +227,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
             style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary, fontSize: 13),
           ),
           Text(
-            'Grid dimensions: $_rows × $_columns',
+            'Grid dimensions: $rows × $columns',
             style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
         ],

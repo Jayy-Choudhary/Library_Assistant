@@ -17,10 +17,296 @@ class _NoticeScreenState extends State<NoticeScreen> {
   List<dynamic> _notices = [];
   String _currentFilter = "Pending"; // Pending | Due | Overdue | Reminder Due | All
 
+  // Bulk Send Wizard state
+  bool _inBulkWizard = false;
+  int _bulkWizardIndex = 0;
+  List<dynamic> _bulkNotices = [];
+
   @override
   void initState() {
     super.initState();
     _loadNotices();
+  }
+
+  void _startBulkWizard() {
+    final unsent = _notices.where((n) => n['sent_at'] == null).toList();
+    if (unsent.isEmpty) {
+      _showSnackbar("No pending notices to send.", AppColors.success);
+      return;
+    }
+    setState(() {
+      _bulkNotices = unsent;
+      _bulkWizardIndex = 0;
+      _inBulkWizard = true;
+    });
+  }
+
+  void _exitBulkWizard() {
+    setState(() {
+      _inBulkWizard = false;
+    });
+    _loadNotices();
+  }
+
+  Future<void> _bulkSendCurrent() async {
+    if (_bulkWizardIndex >= _bulkNotices.length) return;
+    final notice = _bulkNotices[_bulkWizardIndex];
+    final phone = notice['mobile_number'] ?? '';
+    final message = notice['message'] ?? '';
+    final noticeId = notice['id'];
+
+    if (phone.isEmpty) {
+      _showSnackbar("No mobile number configured for this student.", AppColors.danger);
+      return;
+    }
+
+    String cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+    if (cleanPhone.length == 10) {
+      cleanPhone = '91$cleanPhone';
+    }
+
+    final String urlStr = "https://wa.me/$cleanPhone?text=${Uri.encodeComponent(message)}";
+    final Uri url = Uri.parse(urlStr);
+
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        _showSnackbar("Could not open WhatsApp app directly.", AppColors.warning);
+      }
+    } catch (e) {
+      _showSnackbar("Could not open WhatsApp app.", AppColors.warning);
+    }
+
+    try {
+      await ApiService.markNoticeSent(noticeId);
+    } catch (e) {
+      // Ignore background write errors to allow wizard progression
+    }
+
+    _showSnackbar("Sent notice to ${notice['full_name']}!", AppColors.success);
+
+    setState(() {
+      if (_bulkWizardIndex < _bulkNotices.length - 1) {
+        _bulkWizardIndex++;
+      } else {
+        _inBulkWizard = false;
+        _showSnackbar("Bulk sending completed successfully! 🎉", AppColors.success);
+        _loadNotices();
+      }
+    });
+  }
+
+  void _bulkSkipCurrent() {
+    setState(() {
+      if (_bulkWizardIndex < _bulkNotices.length - 1) {
+        _bulkWizardIndex++;
+      } else {
+        _inBulkWizard = false;
+        _showSnackbar("Bulk sending completed! 🎉", AppColors.success);
+        _loadNotices();
+      }
+    });
+  }
+
+  void _bulkPrevCurrent() {
+    if (_bulkWizardIndex > 0) {
+      setState(() {
+        _bulkWizardIndex--;
+      });
+    }
+  }
+
+  Widget _buildBulkWizardView() {
+    if (_bulkNotices.isEmpty || _bulkWizardIndex >= _bulkNotices.length) {
+      return const Center(child: Text("No notices to process."));
+    }
+
+    final notice = _bulkNotices[_bulkWizardIndex];
+    final String name = notice['full_name'] ?? '';
+    final String seat = notice['seat_number'] ?? '';
+    final String phone = notice['mobile_number'] ?? '';
+    final String message = notice['message'] ?? '';
+    final double pct = (_bulkWizardIndex + 1) / _bulkNotices.length;
+
+    return Container(
+      color: AppColors.bg,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '🤖 Bulk Send Wizard',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Send notices to all due students sequentially',
+                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+              IconButton(
+                icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary),
+                onPressed: _exitBulkWizard,
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LinearProgressIndicator(
+                value: pct,
+                backgroundColor: AppColors.primary.withOpacity(0.1),
+                color: AppColors.accent,
+                minHeight: 6,
+                borderRadius: BorderRadius.circular(3),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Notice ${_bulkWizardIndex + 1} of ${_bulkNotices.length}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
+                  ),
+                  Text(
+                    '${(pct * 100).toStringAsFixed(0)}% Complete',
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      (name.isNotEmpty ? name[0] : '?').toUpperCase(),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.accent),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Seat: $seat | Phone: $phone',
+                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.cardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'MESSAGE TEMPLATE',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1.1),
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Text(
+                        message,
+                        style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.textPrimary),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _bulkWizardIndex == 0 ? null : _bulkPrevCurrent,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const Text('⬅ Prev', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _bulkSkipCurrent,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.textSecondary,
+                    side: const BorderSide(color: AppColors.border),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: Text(
+                    _bulkWizardIndex == _bulkNotices.length - 1 ? 'Skip & Done ✓' : 'Skip / Next ➔',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: _bulkSendCurrent,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF25D366),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              elevation: 0,
+            ),
+            icon: const Icon(Icons.chat_bubble_rounded),
+            label: const Text(
+              'Send & Next',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadNotices() async {
@@ -200,33 +486,44 @@ class _NoticeScreenState extends State<NoticeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasUnsentNotices = _notices.any((n) => n['sent_at'] == null);
     return Scaffold(
       appBar: AppBar(
         title: const Text('🔔 Notice Center'),
-      ),
-      body: Column(
-        children: [
-          _buildFilterBar(),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: AppColors.accent))
-                : _errorMessage != null
-                    ? _buildErrorView()
-                    : _notices.isEmpty
-                        ? _buildEmptyView()
-                        : RefreshIndicator(
-                            onRefresh: _loadNotices,
-                            child: ListView.builder(
-                              itemCount: _notices.length,
-                              itemBuilder: (context, idx) {
-                                final notice = _notices[idx];
-                                return _buildNoticeCard(notice);
-                              },
-                            ),
-                          ),
-          ),
+        actions: [
+          if (!_isLoading && _errorMessage == null && hasUnsentNotices && !_inBulkWizard)
+            IconButton(
+              icon: const Icon(Icons.rocket_launch_outlined),
+              tooltip: 'Bulk Send Wizard',
+              onPressed: _startBulkWizard,
+            ),
         ],
       ),
+      body: _inBulkWizard
+          ? _buildBulkWizardView()
+          : Column(
+              children: [
+                _buildFilterBar(),
+                Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator(color: AppColors.accent))
+                      : _errorMessage != null
+                          ? _buildErrorView()
+                          : _notices.isEmpty
+                              ? _buildEmptyView()
+                              : RefreshIndicator(
+                                  onRefresh: _loadNotices,
+                                  child: ListView.builder(
+                                    itemCount: _notices.length,
+                                    itemBuilder: (context, idx) {
+                                      final notice = _notices[idx];
+                                      return _buildNoticeCard(notice);
+                                    },
+                                  ),
+                                ),
+                ),
+              ],
+            ),
     );
   }
 
