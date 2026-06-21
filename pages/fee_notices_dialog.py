@@ -89,6 +89,13 @@ class FeeNoticesDialog(tk.Toplevel):
             color=COLORS["accent2"],
         ).pack(side="right", padx=4)
 
+        action_button(
+            tb,
+            "Gen_Msg",
+            self._open_general_message_dialog,
+            color=COLORS["accent"],
+        ).pack(side="right", padx=4)
+
     def _build_table(self):
         cols = [
             "Student Name",
@@ -723,4 +730,89 @@ class FeeNoticesDialog(tk.Toplevel):
 
         t = threading.Thread(target=send_thread, daemon=True)
         t.start()
+
+    def _open_general_message_dialog(self):
+        # Open a simple dialog to edit the template
+        win = tk.Toplevel(self)
+        win.title("Edit General Notice Template")
+        win.geometry("520x400")
+        win.configure(bg=COLORS["card_bg"])
+        win.transient(self)
+        win.grab_set()
+
+        # Center it relative to parent
+        win.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - 520) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - 400) // 2
+        win.geometry(f"+{max(x,0)}+{max(y,0)}")
+
+        tk.Label(
+            win,
+            text="Edit General Notice Template",
+            font=FONT_HEADER,
+            bg=COLORS["accent"],
+            fg="#FFFFFF",
+            padx=16,
+            pady=10,
+        ).pack(fill="x")
+
+        body = tk.Frame(win, bg=COLORS["card_bg"], padx=16, pady=16)
+        body.pack(fill="both", expand=True)
+
+        tk.Label(
+            body,
+            text=(
+                "Customize the default template. Placeholders will be replaced automatically:\n"
+                "  • <std_name>  ->  Student's Full Name\n"
+                "  • <Date>      ->  Subscription Due Date"
+            ),
+            font=FONT_SMALL,
+            bg=COLORS["card_bg"],
+            fg=COLORS["text_secondary"],
+            justify="left",
+            anchor="w",
+        ).pack(fill="x", pady=(0, 10))
+
+        ta = tk.Text(
+            body,
+            height=8,
+            wrap="word",
+            font=FONT_BODY,
+            bg="#F9FAFB",
+            fg=COLORS["text_primary"],
+            relief="flat",
+            bd=6,
+        )
+        ta.pack(fill="both", expand=True, pady=6)
+
+        # Load current template
+        current_template = self.db.get_general_notice_template()
+        ta.insert("1.0", current_template)
+
+        btn_frame = tk.Frame(body, bg=COLORS["card_bg"])
+        btn_frame.pack(fill="x", pady=(12, 0))
+
+        def save():
+            text = ta.get("1.0", "end-1c")
+            if not text.strip():
+                messagebox.showwarning("Empty Template", "Template cannot be empty.", parent=win)
+                return
+            self.db.set_general_notice_template(text)
+            messagebox.showinfo("Saved", "General message template updated! Existing pending notices updated.", parent=win)
+            win.destroy()
+            self.refresh()
+
+        action_button(
+            btn_frame,
+            "Save",
+            save,
+            color=COLORS["success"],
+        ).pack(side="right", padx=4)
+
+        action_button(
+            btn_frame,
+            "Cancel",
+            win.destroy,
+            color=COLORS.get("accent2", COLORS["accent"]),
+        ).pack(side="right", padx=4)
 

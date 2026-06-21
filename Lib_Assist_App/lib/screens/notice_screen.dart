@@ -371,11 +371,7 @@ class _NoticeScreenState extends State<NoticeScreen> {
     }
 
     String cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
-    final Uri smsUri = Uri(
-      scheme: 'sms',
-      path: cleanPhone,
-      queryParameters: {'body': message},
-    );
+    final Uri smsUri = Uri.parse('sms:$cleanPhone?body=${Uri.encodeComponent(message)}');
 
     try {
       if (await canLaunchUrl(smsUri)) {
@@ -491,6 +487,12 @@ class _NoticeScreenState extends State<NoticeScreen> {
       appBar: AppBar(
         title: const Text('🔔 Notice Center'),
         actions: [
+          if (!_inBulkWizard)
+            TextButton.icon(
+              icon: const Icon(Icons.edit_note_rounded, color: Colors.white, size: 20),
+              label: const Text('Gen_Msg', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+              onPressed: _showGenMsgDialog,
+            ),
           if (!_isLoading && _errorMessage == null && hasUnsentNotices && !_inBulkWizard)
             IconButton(
               icon: const Icon(Icons.rocket_launch_outlined),
@@ -763,6 +765,161 @@ class _NoticeScreenState extends State<NoticeScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _showGenMsgDialog() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return _GenMsgDialogContent(
+          onSaved: () {
+            _loadNotices();
+          },
+        );
+      },
+    );
+  }
+}
+
+class _GenMsgDialogContent extends StatefulWidget {
+  final VoidCallback onSaved;
+  const _GenMsgDialogContent({required this.onSaved});
+
+  @override
+  State<_GenMsgDialogContent> createState() => _GenMsgDialogContentState();
+}
+
+class _GenMsgDialogContentState extends State<_GenMsgDialogContent> {
+  final TextEditingController _controller = TextEditingController();
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchTemplate();
+  }
+
+  Future<void> _fetchTemplate() async {
+    try {
+      final template = await ApiService.getGeneralNoticeTemplate();
+      setState(() {
+        _controller.text = template;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _saveTemplate() async {
+    final text = _controller.text;
+    if (text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Template cannot be empty')),
+      );
+      return;
+    }
+    setState(() {
+      _saving = true;
+    });
+    try {
+      await ApiService.setGeneralNoticeTemplate(text);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('General message template updated!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        widget.onSaved();
+      }
+    } catch (e) {
+      setState(() {
+        _saving = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save template: $e'), backgroundColor: AppColors.danger),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('📝 Edit General Notice'),
+      content: _loading
+          ? const SizedBox(
+              height: 100,
+              child: Center(child: CircularProgressIndicator(color: AppColors.accent)),
+            )
+          : SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Customize the general notice template. Use the placeholders below to insert values dynamically:',
+                    style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.bg,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: const Text(
+                      '• <std_name>  ->  Student\'s Name\n• <Date>  ->  Due Date',
+                      style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: AppColors.textPrimary, height: 1.4),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _controller,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      labelText: 'General Notice Template',
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
+                  ],
+                ],
+              ),
+            ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.pop(context),
+          child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+        ),
+        if (!_loading)
+          ElevatedButton(
+            onPressed: _saving ? null : _saveTemplate,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+            ),
+            child: _saving
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
+                : const Text('Save'),
+          ),
+      ],
     );
   }
 }

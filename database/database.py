@@ -35,6 +35,7 @@ class Database:
         self._migrate_fees_subscription_columns()
         self._migrate_student_photo_path_column()
         self._migrate_fee_notices_sent_columns()
+        self._ensure_default_settings()
 
     def _configure_connection(self):
         self.conn.execute("PRAGMA foreign_keys = ON")
@@ -108,6 +109,11 @@ class Database:
             columns       INTEGER NOT NULL,
             seat_spacing  INTEGER NOT NULL DEFAULT 8
         );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key           TEXT PRIMARY KEY,
+            value         TEXT NOT NULL
+        );
         """)
         self.conn.commit()
 
@@ -162,6 +168,42 @@ class Database:
         if "sent_at" in cols:
             return
         cur.execute("ALTER TABLE fee_notices ADD COLUMN sent_at TEXT")
+        self.conn.commit()
+
+    def _ensure_default_settings(self):
+        cur = self.conn.cursor()
+        cur.execute("""
+            INSERT OR IGNORE INTO app_settings (key, value)
+            VALUES ('general_notice_template', 'Dear <std_name>,\nYour monthly Library Subscription will expire on <Date>.\nPlease renew your subscription before the due date to avoid interruption of services.')
+        """)
+        self.conn.commit()
+
+    def get_general_notice_template(self) -> str:
+        row = self.conn.execute(
+            "SELECT value FROM app_settings WHERE key='general_notice_template'"
+        ).fetchone()
+        if row:
+            return row["value"]
+        return "Dear <std_name>,\nYour monthly Library Subscription will expire on <Date>.\nPlease renew your subscription before the due date to avoid interruption of services."
+
+    def set_general_notice_template(self, template: str):
+        self.conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('general_notice_template', ?)",
+            (template,),
+        )
+        # Update all existing 'Pending' notices to use the new template
+        pending_rows = self.conn.execute("""
+            SELECT fn.id, s.full_name, fn.due_date
+            FROM fee_notices fn
+            JOIN students s ON fn.student_id = s.id
+            WHERE fn.status = 'Pending'
+        """).fetchall()
+        for r in pending_rows:
+            new_msg = template.replace('<std_name>', r["full_name"]).replace('<Date>', r["due_date"])
+            self.conn.execute(
+                "UPDATE fee_notices SET message=? WHERE id=?",
+                (new_msg, r["id"])
+            )
         self.conn.commit()
 
     def _migrate_fees_subscription_columns(self):
@@ -1241,10 +1283,8 @@ class Database:
             if existing:
                 continue
 
-            message = (
-                f"Dear {student_name}, your monthly library subscription will expire on {due_date}. "
-                "Please renew your subscription before the due date to avoid interruption of services."
-            )
+            template = self.get_general_notice_template()
+            message = template.replace('<std_name>', student_name).replace('<Date>', due_date)
 
             self.conn.execute(
                 """

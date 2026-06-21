@@ -15,7 +15,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
   bool _isLoading = true;
   String? _errorMessage;
 
-  String _selectedRoom = 'A'; // 'A' | 'B' | 'C'
+  String _selectedRoom = 'All'; // 'All' | 'A' | 'B' | 'C'
   List<dynamic> _allSeats = [];
   Map<String, List<dynamic>> _groupedOccupants = {};
 
@@ -75,11 +75,11 @@ class _RoomsScreenState extends State<RoomsScreen> {
     }
   }
 
-  // Get seats belonging to current selected room
-  List<dynamic> _getFilteredSeats() {
+  // Get seats belonging to target room
+  List<dynamic> _getFilteredSeatsForRoom(String room) {
     final list = _allSeats.where((seat) {
       final r = seat['room'] ?? 'A';
-      return r.toString().trim().toUpperCase() == _selectedRoom;
+      return r.toString().trim().toUpperCase() == room;
     }).toList();
     // Sort alphabetically by seat number
     list.sort((a, b) => (a['seat_number'] ?? '').toString().compareTo((b['seat_number'] ?? '').toString()));
@@ -116,12 +116,63 @@ class _RoomsScreenState extends State<RoomsScreen> {
     return 'Night';
   }
 
+  Widget _buildRoomGridCard(String room) {
+    final filteredSeats = _getFilteredSeatsForRoom(room);
+    if (filteredSeats.isEmpty) return const SizedBox.shrink();
+
+    final currentLayout = _roomLayouts[room] ?? {"rows": 5, "columns": 5, "spacing": 8};
+    final columns = currentLayout['columns'] ?? 5;
+    final rows = currentLayout['rows'] ?? 5;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '🏢 Room $room',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
+                ),
+                Text(
+                  '${filteredSeats.length} Seats • Grid: $rows × $columns',
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns > 0 ? columns : 5,
+                crossAxisSpacing: 10.0,
+                mainAxisSpacing: 10.0,
+                childAspectRatio: 1.0,
+              ),
+              itemCount: filteredSeats.length,
+              itemBuilder: (context, idx) {
+                final seat = filteredSeats[idx];
+                final seatNumber = seat['seat_number'] ?? '';
+                final occupants = _groupedOccupants[seatNumber] ?? [];
+                final seatColor = _getSeatColor(occupants);
+                final shortLabel = _getSeatShiftShortLabel(occupants);
+
+                return _buildSeatTile(seatNumber, occupants, seatColor, shortLabel);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final filteredSeats = _getFilteredSeats();
-    final currentLayout = _roomLayouts[_selectedRoom] ?? {"rows": 5, "columns": 5, "spacing": 8};
-    final columns = currentLayout['columns'] ?? 5;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('🗺️ Room Seats Layout'),
@@ -134,37 +185,26 @@ class _RoomsScreenState extends State<RoomsScreen> {
                 ? const Center(child: CircularProgressIndicator(color: AppColors.accent))
                 : _errorMessage != null
                     ? _buildErrorView()
-                    : filteredSeats.isEmpty
+                    : _allSeats.isEmpty
                         ? _buildEmptyView()
-                        : Column(
-                            children: [
-                              _buildLayoutInfoSummary(),
-                              Expanded(
-                                child: RefreshIndicator(
-                                  onRefresh: _loadRoomData,
-                                  child: GridView.builder(
-                                    padding: const EdgeInsets.all(16),
-                                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: columns > 0 ? columns : 5,
-                                      crossAxisSpacing: 10.0,
-                                      mainAxisSpacing: 10.0,
-                                      childAspectRatio: 1.0,
-                                    ),
-                                    itemCount: filteredSeats.length,
-                                    itemBuilder: (context, idx) {
-                                      final seat = filteredSeats[idx];
-                                      final seatNumber = seat['seat_number'] ?? '';
-                                      final occupants = _groupedOccupants[seatNumber] ?? [];
-                                      final seatColor = _getSeatColor(occupants);
-                                      final shortLabel = _getSeatShiftShortLabel(occupants);
-
-                                      return _buildSeatTile(seatNumber, occupants, seatColor, shortLabel);
-                                    },
-                                  ),
-                                ),
-                              ),
-                              _buildColorLegend(),
-                            ],
+                        : RefreshIndicator(
+                            onRefresh: _loadRoomData,
+                            child: ListView(
+                              padding: const EdgeInsets.all(16),
+                              children: [
+                                if (_selectedRoom == 'All') ...[
+                                  _buildRoomGridCard('A'),
+                                  const SizedBox(height: 16),
+                                  _buildRoomGridCard('B'),
+                                  const SizedBox(height: 16),
+                                  _buildRoomGridCard('C'),
+                                ] else ...[
+                                  _buildRoomGridCard(_selectedRoom),
+                                ],
+                                const SizedBox(height: 16),
+                                _buildColorLegend(),
+                              ],
+                            ),
                           ),
           ),
         ],
@@ -178,13 +218,13 @@ class _RoomsScreenState extends State<RoomsScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: ['A', 'B', 'C'].map((room) {
+        children: ['All', 'A', 'B', 'C'].map((room) {
           final isSelected = _selectedRoom == room;
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6.0),
             child: ChoiceChip(
               label: Text(
-                'Room $room',
+                room == 'All' ? 'All Rooms' : 'Room $room',
                 style: TextStyle(
                   color: isSelected ? Colors.white : AppColors.textSecondary,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
@@ -206,31 +246,6 @@ class _RoomsScreenState extends State<RoomsScreen> {
             ),
           );
         }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildLayoutInfoSummary() {
-    final filteredSeatsCount = _getFilteredSeats().length;
-    final currentLayout = _roomLayouts[_selectedRoom] ?? {"rows": 5, "columns": 5, "spacing": 8};
-    final rows = currentLayout['rows'] ?? 5;
-    final columns = currentLayout['columns'] ?? 5;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      color: AppColors.bg,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            'Total Seats: $filteredSeatsCount',
-            style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary, fontSize: 13),
-          ),
-          Text(
-            'Grid dimensions: $rows × $columns',
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-          ),
-        ],
       ),
     );
   }

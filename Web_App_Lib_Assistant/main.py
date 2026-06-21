@@ -816,6 +816,19 @@ def fee_notice_mark_sent(notice_id: int):
     return JSONResponse({"status": "success"})
 
 
+@app.get("/fees/notices/general-template")
+def get_general_template():
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"template": db.get_general_notice_template()})
+
+
+@app.post("/fees/notices/general-template")
+def set_general_template(template: str = Form(...)):
+    from fastapi.responses import JSONResponse
+    db.set_general_notice_template(template)
+    return JSONResponse({"status": "success"})
+
+
 @app.post("/api/db/call")
 async def db_call(request: Request):
     """Secure endpoint for desktop/remote clients to run database methods."""

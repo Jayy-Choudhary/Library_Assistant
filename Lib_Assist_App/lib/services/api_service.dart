@@ -150,6 +150,17 @@ class ApiService {
     await _callDb("mark_notice_sent", args: [noticeId]);
   }
 
+  /// Fetch general notice template settings
+  static Future<String> getGeneralNoticeTemplate() async {
+    final result = await _callDb("get_general_notice_template");
+    return result?.toString() ?? "";
+  }
+
+  /// Update general notice template settings
+  static Future<void> setGeneralNoticeTemplate(String template) async {
+    await _callDb("set_general_notice_template", args: [template]);
+  }
+
   /// Fetch all active students with their fee records (for fee management screen)
   static Future<List<dynamic>> getFeesWithStudents() async {
     final result = await _callDb("get_fees_with_students");

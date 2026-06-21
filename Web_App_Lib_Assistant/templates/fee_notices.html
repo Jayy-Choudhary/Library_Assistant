@@ -19,6 +19,11 @@
                     onclick="openAutoSend()">
                 <span style="font-size:1.1em;">🤖</span> Auto-Send All Pending
             </button>
+            <button class="btn" id="gen-msg-btn"
+                    style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;font-weight:700;display:flex;align-items:center;gap:6px;"
+                    onclick="openGenMsgModal()">
+                <span>📝</span> Gen_Msg
+            </button>
             <a class="btn secondary" href="/fees">← Back to Fees</a>
         </div>
     </div>
@@ -243,6 +248,28 @@
     </div>
 </div>
 
+<!-- Gen Msg Modal -->
+<div id="gen-msg-modal" class="bulk-backdrop" style="display:none;" onclick="if(event.target===this)closeGenMsgModal()">
+    <div class="bulk-modal" style="max-width:550px; padding: 24px;">
+        <div class="bulk-header" style="margin-bottom: 16px; padding: 0 0 12px 0;">
+            <div class="bulk-title">📝 Edit General Message Template</div>
+            <button class="bulk-close-btn" onclick="closeGenMsgModal()">✕</button>
+        </div>
+        <div style="font-size: 0.88rem; color: #94a3b8; margin-bottom: 12px; line-height: 1.4;">
+            Customize the default template used for fee notifications. Use these placeholders to insert student details dynamically:
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.05); font-family: monospace; font-size: 0.85rem; color: #e2e8f0; margin-bottom: 16px;">
+            • &lt;std_name&gt;  -&gt;  Student's Full Name<br>
+            • &lt;Date&gt;      -&gt;  Subscription Due Date
+        </div>
+        <textarea id="gen-msg-textarea" style="width: 100%; height: 160px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #f8fafc; padding: 12px; font-family: inherit; font-size: 0.93rem; resize: vertical; box-sizing: border-box;"></textarea>
+        <div class="bulk-actions" style="margin-top: 20px; padding: 16px 0 0 0; justify-content: flex-end; gap: 10px;">
+            <button class="btn secondary" onclick="closeGenMsgModal()">Cancel</button>
+            <button class="btn" style="background: linear-gradient(135deg,#6366f1,#4f46e5); font-weight: 700;" onclick="saveGenMsg()">Save Template</button>
+        </div>
+    </div>
+</div>
+
 <!-- Toast -->
 <div id="copy-toast" class="copy-toast" style="display:none;">✓ Copied!</div>
 
@@ -390,6 +417,52 @@
 </style>
 
 <script>
+/* ── General Template Modal ─────────── */
+function openGenMsgModal() {
+    document.getElementById('gen-msg-modal').style.display = 'flex';
+    document.getElementById('gen-msg-textarea').value = 'Loading…';
+    fetch('/fees/notices/general-template')
+        .then(res => res.json())
+        .then(data => {
+            if (data.template !== undefined) {
+                document.getElementById('gen-msg-textarea').value = data.template;
+            } else {
+                alert("Error loading template");
+            }
+        })
+        .catch(err => alert("Failed to fetch template: " + err));
+}
+
+function closeGenMsgModal() {
+    document.getElementById('gen-msg-modal').style.display = 'none';
+}
+
+function saveGenMsg() {
+    const text = document.getElementById('gen-msg-textarea').value;
+    if (!text.trim()) {
+        alert("Template cannot be empty.");
+        return;
+    }
+    const formData = new FormData();
+    formData.append('template', text);
+
+    fetch('/fees/notices/general-template', {
+        method: 'POST',
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert("Template saved successfully! Pending notice messages updated.");
+            closeGenMsgModal();
+            window.location.reload();
+        } else {
+            alert("Error saving: " + JSON.stringify(data));
+        }
+    })
+    .catch(err => alert("Failed to save template: " + err));
+}
+
 /* ── Per-row preview ─────────────────── */
 let _currentNoticeId = null;
 let _messageCache = {};
