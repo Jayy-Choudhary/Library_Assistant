@@ -491,6 +491,7 @@ def fee_notices_pending_all():
             "whatsapp_text": wa_text,
             "wa_url": wa_url,
             "has_valid_mobile": mobile is not None,
+            "sent_at": row["sent_at"] or "",
         })
     return JSONResponse(result)
 
@@ -514,25 +515,25 @@ def whatsapp_status():
     """Check if WhatsApp Web is open and logged in."""
     from fastapi.responses import JSONResponse
     if IS_PRODUCTION:
-        return JSONResponse({"linked": False, "reason": "Disabled in cloud mode"})
+        return JSONResponse({"linked": False, "reason": "Disabled in cloud mode", "is_production": True})
     global _wa_driver
     if _wa_driver is None:
-        return JSONResponse({"linked": False, "reason": "Browser not opened"})
+        return JSONResponse({"linked": False, "reason": "Browser not opened", "is_production": False})
     try:
         _wa_driver.title  # will raise if browser closed
         url = _wa_driver.current_url
         if "web.whatsapp.com" not in url:
-            return JSONResponse({"linked": False, "reason": "Not on WhatsApp Web"})
+            return JSONResponse({"linked": False, "reason": "Not on WhatsApp Web", "is_production": False})
         # Check for QR code page vs logged-in state
         page_src = _wa_driver.page_source
         if 'data-testid="qrcode"' in page_src or 'qrcode' in page_src:
-            return JSONResponse({"linked": False, "reason": "Waiting for QR scan"})
+            return JSONResponse({"linked": False, "reason": "Waiting for QR scan", "is_production": False})
         if "pane-side" not in page_src and "chat-list" not in page_src:
-            return JSONResponse({"linked": False, "reason": "Loading WhatsApp Web..."})
-        return JSONResponse({"linked": True})
+            return JSONResponse({"linked": False, "reason": "Loading WhatsApp Web...", "is_production": False})
+        return JSONResponse({"linked": True, "is_production": False})
     except Exception as e:
         _wa_driver = None
-        return JSONResponse({"linked": False, "reason": str(e)})
+        return JSONResponse({"linked": False, "reason": str(e), "is_production": False})
 
 
 @app.get("/fees/notices/debug-dom")
@@ -798,6 +799,14 @@ def fee_notice_cancel(request: Request, notice_id: int):
     return RedirectResponse(url="/fees/notices", status_code=303)
 
 
+@app.post("/fees/notices/{notice_id}/mark-sent")
+def fee_notice_mark_sent(notice_id: int):
+    """Mark a notice as sent (update sent_at timestamp)."""
+    from fastapi.responses import JSONResponse
+    db.mark_notice_sent(notice_id)
+    return JSONResponse({"status": "success"})
+
+
 @app.get("/fees/export")
 def fees_export(request: Request):
     from fastapi.responses import PlainTextResponse
@@ -999,6 +1008,9 @@ def fee_notice_whatsapp(request: Request, notice_id: int):
         return _render(request, "fee_notices.html", rows=rows, filter="Pending",
                        error=f"Invalid mobile number for {row['full_name']}. "
                              "WhatsApp requires a valid 10-digit Indian number.")
+
+    # Mark notice as sent in database
+    db.mark_notice_sent(notice_id)
 
     message = _build_wa_message(row)
     wa_url = f"https://wa.me/{mobile}?text={quote(message)}"

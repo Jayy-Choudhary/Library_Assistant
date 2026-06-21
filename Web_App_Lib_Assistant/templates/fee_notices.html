@@ -177,6 +177,53 @@
             </div>
         </div>
 
+        <!-- CLOUD WIZARD SCREEN -->
+        <div id="cloud-wizard" style="display:none;">
+            <div class="bulk-header">
+                <div>
+                    <div class="bulk-title">📱 Mobile WhatsApp Wizard</div>
+                    <div id="cloud-wizard-sub" class="bulk-subtitle">Send notices directly from your device</div>
+                </div>
+                <button class="bulk-close-btn" onclick="closeAutoModal()">✕</button>
+            </div>
+
+            <!-- Progress bar -->
+            <div class="bulk-progress-wrap">
+                <div id="cloud-progress-bar" class="bulk-progress-bar" style="width:0%"></div>
+            </div>
+            <div id="cloud-progress-label" class="bulk-progress-label" style="margin-top: 5px; margin-bottom: 12px;">0 / 0</div>
+
+            <!-- Current student notice card -->
+            <div class="auto-current-card" style="margin: 0 24px 16px; border-radius: 12px; border: 1px solid rgba(99,102,241,.25); background: rgba(99,102,241,.06); display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 18px;">
+                <div style="display: flex; gap: 14px; align-items: center;">
+                    <div id="cloud-cur-avatar" class="bulk-student-avatar">👤</div>
+                    <div>
+                        <div id="cloud-cur-name" style="font-size: 1.15rem; font-weight: 700; color: #e0e7ff;">Name</div>
+                        <div id="cloud-cur-seat" style="font-size: 0.85rem; color: #94a3b8; margin-top: 2px;">Seat: -- | Phone: --</div>
+                    </div>
+                </div>
+                <div style="background: rgba(0, 0, 0, 0.25); border-radius: 8px; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.05); font-family: monospace; font-size: 0.88rem; color: #e2e8f0; white-space: pre-wrap; word-break: break-word; min-height: 80px;" id="cloud-cur-message">
+                    Message preview...
+                </div>
+            </div>
+
+            <div class="bulk-actions" style="gap: 12px; justify-content: space-between;">
+                <button class="btn secondary" id="cloud-prev-btn" style="flex: 1;" onclick="cloudPrevStudent()">
+                    ⬅ Prev
+                </button>
+                <button class="btn" id="cloud-next-btn"
+                        style="background: var(--accent); font-weight: 700; flex: 1.5; display: flex; align-items: center; justify-content: center; gap: 6px;"
+                        onclick="cloudNextStudent(false)">
+                    Skip / Next ➔
+                </button>
+                <button class="btn" id="cloud-send-btn"
+                        style="background: linear-gradient(135deg, #059669, #047857); font-weight: 700; flex: 2; display: flex; align-items: center; justify-content: center; gap: 8px;"
+                        onclick="cloudSendCurrent()">
+                    📱 Send & Next
+                </button>
+            </div>
+        </div>
+
         <!-- DONE SCREEN -->
         <div id="auto-done" style="display:none;">
             <div class="bulk-header">
@@ -415,18 +462,40 @@ function openPreviewWhatsApp() {
     window.open(`/fees/notices/${_currentNoticeId}/whatsapp`, '_blank');
 }
 
-/* ── Auto-Send Modal (SSE Selenium) ─── */
+/* ── Auto-Send Modal (SSE Selenium / Cloud Wizard) ─── */
 let _autoRunning = false;
 let _autoSse     = null;
 let _waStatusInterval = null;
+let isCloudMode = false;
+let cloudStudents = [];
+let cloudIndex = 0;
+let cloudSentCount = 0;
+let cloudSkipCount = 0;
 
-// Poll WhatsApp link status every 3 seconds
+// Poll WhatsApp status and detect Cloud Environment
 async function pollWaStatus() {
     try {
         const res = await fetch('/fees/notices/whatsapp-status');
         const d   = await res.json();
         const dot  = document.getElementById('wa-status-dot');
         const txt  = document.getElementById('wa-status-text');
+        const linkBtn = document.getElementById('link-wa-btn');
+
+        if (d.is_production) {
+            isCloudMode = true;
+            if (linkBtn) linkBtn.style.display = 'none';
+            if (dot) dot.style.background = '#22c55e';
+            if (txt) {
+                txt.textContent = 'Cloud Mode (Direct Send active)';
+                txt.style.color = '#4ade80';
+            }
+            if (_waStatusInterval) {
+                clearInterval(_waStatusInterval);
+                _waStatusInterval = null;
+            }
+            return;
+        }
+
         if (d.linked) {
             dot.style.background = '#22c55e';
             txt.textContent = 'WhatsApp linked ✓';
@@ -467,6 +536,24 @@ async function openAutoSend() {
     // Fetch pending count first
     const res = await fetch('/fees/notices/pending-all');
     const rows = await res.json();
+
+    if (isCloudMode) {
+        // Setup cloud student list and launch cloud wizard
+        cloudStudents = rows;
+        cloudIndex = 0;
+        cloudSentCount = 0;
+        cloudSkipCount = 0;
+
+        document.getElementById('cloud-wizard').style.display = 'block';
+        document.getElementById('auto-setup').style.display = 'none';
+        document.getElementById('auto-progress').style.display = 'none';
+        document.getElementById('auto-done').style.display = 'none';
+        document.getElementById('auto-modal-backdrop').style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        cloudRenderStudent();
+        return;
+    }
+
     const total = rows.length;
 
     document.getElementById('auto-setup-sub').textContent =
@@ -483,10 +570,102 @@ async function openAutoSend() {
 
     // Show setup screen
     document.getElementById('auto-setup').style.display = 'block';
+    document.getElementById('cloud-wizard').style.display = 'none';
     document.getElementById('auto-progress').style.display = 'none';
     document.getElementById('auto-done').style.display = 'none';
     document.getElementById('auto-modal-backdrop').style.display = 'flex';
     document.body.style.overflow = 'hidden';
+}
+
+/* ── Cloud Wizard Controller ─── */
+function cloudRenderStudent() {
+    if (!cloudStudents || cloudStudents.length === 0) {
+        showCloudDone("No pending notices to send!");
+        return;
+    }
+
+    if (cloudIndex >= cloudStudents.length) {
+        showCloudDone(`All notices processed! Sent: ${cloudSentCount}, Skipped: ${cloudSkipCount}`);
+        return;
+    }
+
+    let student = cloudStudents[cloudIndex];
+    document.getElementById('cloud-cur-avatar').textContent = (student.full_name[0] || '?').toUpperCase();
+    document.getElementById('cloud-cur-name').textContent = student.full_name;
+    document.getElementById('cloud-cur-seat').textContent = `Seat: ${student.seat_number} | Phone: ${student.mobile_number}` +
+        (student.sent_at ? ` (Sent: ${student.sent_at.substring(11, 16)})` : '');
+    document.getElementById('cloud-cur-message').textContent = student.whatsapp_text;
+
+    // Progress Bar
+    let pct = (cloudIndex / cloudStudents.length) * 100;
+    document.getElementById('cloud-progress-bar').style.width = pct + '%';
+    document.getElementById('cloud-progress-label').textContent = `${cloudIndex + 1} / ${cloudStudents.length}`;
+
+    // Prev Button
+    document.getElementById('cloud-prev-btn').disabled = (cloudIndex === 0);
+
+    // Next Button Text
+    const nextBtn = document.getElementById('cloud-next-btn');
+    if (cloudIndex === cloudStudents.length - 1) {
+        nextBtn.textContent = 'Skip & Finish ✓';
+    } else {
+        nextBtn.textContent = 'Skip / Next ➔';
+    }
+}
+
+async function cloudSendCurrent() {
+    if (cloudIndex >= cloudStudents.length) return;
+    let student = cloudStudents[cloudIndex];
+
+    // Open wa.me link
+    window.open(student.wa_url, '_blank');
+
+    // In background, hit endpoint to mark as sent
+    try {
+        fetch(`/fees/notices/${student.id}/mark-sent`, { method: 'POST' });
+    } catch (e) {
+        console.error("Failed to mark sent in backend:", e);
+    }
+
+    cloudSentCount++;
+    showToast(`✓ Sent to ${student.full_name}`);
+
+    // Auto advance
+    setTimeout(() => {
+        cloudIndex++;
+        cloudRenderStudent();
+    }, 400);
+}
+
+function cloudNextStudent(skipped = false) {
+    if (skipped) {
+        cloudSkipCount++;
+    } else {
+        // If they click 'Mark Sent & Next' manually without opening WhatsApp again
+        let student = cloudStudents[cloudIndex];
+        try {
+            fetch(`/fees/notices/${student.id}/mark-sent`, { method: 'POST' });
+        } catch (e) {}
+        cloudSentCount++;
+    }
+    cloudIndex++;
+    cloudRenderStudent();
+}
+
+function cloudPrevStudent() {
+    if (cloudIndex > 0) {
+        cloudIndex--;
+        // Adjust counts when going back
+        if (cloudSentCount > 0) cloudSentCount--;
+        cloudRenderStudent();
+    }
+}
+
+function showCloudDone(msg) {
+    document.getElementById('cloud-wizard').style.display = 'none';
+    document.getElementById('auto-done').style.display = 'block';
+    document.getElementById('auto-done-msg').textContent = msg;
+    document.getElementById('auto-done-sub').textContent = "Thank you for using the Mobile WhatsApp Wizard.";
 }
 
 function startAutoSend() {
@@ -601,6 +780,9 @@ function closeAutoModal() {
     if (_autoSse) { _autoSse.close(); _autoSse = null; }
     document.getElementById('auto-modal-backdrop').style.display = 'none';
     document.body.style.overflow = '';
+    if (isCloudMode && (cloudSentCount > 0 || cloudSkipCount > 0)) {
+        window.location.reload();
+    }
 }
 </script>
 {% endblock %}

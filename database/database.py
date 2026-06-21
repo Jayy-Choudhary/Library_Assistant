@@ -26,6 +26,7 @@ class Database:
         self._ensure_seats_room_column()
         self._migrate_fees_subscription_columns()
         self._migrate_student_photo_path_column()
+        self._migrate_fee_notices_sent_columns()
 
     def _configure_connection(self):
         self.conn.execute("PRAGMA foreign_keys = ON")
@@ -88,6 +89,7 @@ class Database:
             message TEXT,
             status TEXT NOT NULL DEFAULT 'Pending',
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            sent_at TEXT,
             FOREIGN KEY (student_id) REFERENCES students(id),
             UNIQUE(student_id, due_date)
         );
@@ -141,6 +143,17 @@ class Database:
         if "photo_path" in cols:
             return
         cur.execute("ALTER TABLE students ADD COLUMN photo_path TEXT")
+        self.conn.commit()
+
+    def _migrate_fee_notices_sent_columns(self):
+        """Migration-safe column addition for tracking sent state of fee notices."""
+        cur = self.conn.cursor()
+        cols = [
+            row["name"] for row in cur.execute("PRAGMA table_info(fee_notices)").fetchall()
+        ]
+        if "sent_at" in cols:
+            return
+        cur.execute("ALTER TABLE fee_notices ADD COLUMN sent_at TEXT")
         self.conn.commit()
 
     def _migrate_fees_subscription_columns(self):
@@ -976,6 +989,18 @@ class Database:
         self.conn.commit()
         return cur.rowcount > 0
 
+    def mark_notice_sent(self, notice_id):
+        """Mark a fee notice as sent by saving the current timestamp."""
+        self.conn.execute(
+            """
+            UPDATE fee_notices
+            SET sent_at = datetime('now')
+            WHERE id=?
+            """,
+            (notice_id,),
+        )
+        self.conn.commit()
+
     def get_notice_by_id(self, notice_id):
         return self.conn.execute(
             """
@@ -986,6 +1011,7 @@ class Database:
                    fn.message,
                    fn.status,
                    fn.created_at,
+                   fn.sent_at,
                    s.full_name,
                    s.seat_number,
                    s.mobile_number,
@@ -1010,6 +1036,7 @@ class Database:
                    fn.message,
                    fn.status,
                    fn.created_at,
+                   fn.sent_at,
                    s.full_name,
                    s.seat_number,
                    s.mobile_number,
