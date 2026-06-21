@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../theme/colors.dart';
 import '../services/api_service.dart';
+import 'student_form_screen.dart';
+
 
 class StudentDetailScreen extends StatefulWidget {
   final int studentId;
@@ -22,6 +24,8 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
   Map<String, dynamic>? _feeRecord;
   List<dynamic> _paymentHistory = [];
   bool _isSavingPayment = false;
+  bool _anyChangesSaved = false;
+
 
   @override
   void initState() {
@@ -111,8 +115,9 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
     return PopScope(
       canPop: true,
       onPopInvokedWithResult: (didPop, result) {
-        // Return true to parent screen to refresh list if anything changed
+        // Return changes status to parent screen to refresh list
       },
+
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
@@ -122,6 +127,30 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
               pinned: true,
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.pop(context, _anyChangesSaved),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.edit_rounded),
+                  tooltip: 'Edit Profile',
+                  onPressed: () async {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => StudentFormScreen(studentId: widget.studentId),
+                      ),
+                    );
+                    if (result == true) {
+                      setState(() {
+                        _anyChangesSaved = true;
+                      });
+                      _loadData();
+                    }
+                  },
+                ),
+              ],
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
                   decoration: const BoxDecoration(
@@ -193,6 +222,7 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                 _buildSeatAndShiftInfo(student),
                 _buildFeeStatusCard(monthlyFee, dueAmount),
                 _buildProfileDetailList(student),
+                if (isActive) _buildMarkOldButton(context, student),
                 _buildPaymentHistoryList(),
                 const SizedBox(height: 100), // safe space for bottom payment button
               ]),
@@ -591,6 +621,9 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                                 ),
                               );
                               Navigator.pop(dialogContext);
+                              setState(() {
+                                _anyChangesSaved = true;
+                              });
                               _loadData(); // reload details
                             } else {
                               throw Exception(result['message'] ?? 'Failed to record payment');
@@ -619,6 +652,149 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                         )
                       : const Text('Submit Payment'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildMarkOldButton(BuildContext context, Map<String, dynamic> student) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Card(
+        color: AppColors.danger.withOpacity(0.05),
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: AppColors.danger.withOpacity(0.2), width: 1),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _showMarkOldDialog(context),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.no_accounts_rounded, color: AppColors.danger),
+                SizedBox(width: 8),
+                Text(
+                  'Mark Student as Inactive / Exit',
+                  style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showMarkOldDialog(BuildContext context) {
+    String exitDateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (stContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Exit Library Registration'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('This will cancel all pending notices for this student, vacate their seat allocation, and mark their profile status as "Old Student".'),
+                  const SizedBox(height: 16),
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2030),
+                      );
+                      if (picked != null) {
+                        setDialogState(() {
+                          exitDateStr = DateFormat('yyyy-MM-dd').format(picked);
+                        });
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Exit Date',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.calendar_today_rounded),
+                      ),
+                      child: Text(
+                        exitDateStr,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            isSaving = true;
+                          });
+                          try {
+                            final success = await ApiService.markOldStudent(
+                              widget.studentId,
+                              exitDateStr,
+                            );
+                            if (success) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Student profile marked as inactive.'),
+                                  backgroundColor: AppColors.success,
+                                ),
+                              );
+                              Navigator.pop(dialogContext);
+                              setState(() {
+                                _anyChangesSaved = true;
+                              });
+                              _loadData(); // Reload details page to update status view
+                            } else {
+                              throw Exception('Failed to mark student as old.');
+                            }
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error: ${e.toString()}'),
+                                backgroundColor: AppColors.danger,
+                              ),
+                            );
+                          } finally {
+                            setDialogState(() {
+                              isSaving = false;
+                            });
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.danger,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Text('Confirm Exit'),
                 ),
               ],
             );

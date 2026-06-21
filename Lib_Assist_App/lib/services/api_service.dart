@@ -107,4 +107,62 @@ class ApiService {
   static Future<void> markNoticeSent(int noticeId) async {
     await _callDb("mark_notice_sent", args: [noticeId]);
   }
+
+  /// Fetch seats compatible with a target shift type
+  static Future<List<String>> getCompatibleSeats(String shiftType) async {
+    final result = await _callDb("get_compatible_seats", args: [shiftType]);
+    return List<String>.from(result.map((x) => x.toString()));
+  }
+
+  /// Create a new student profile in the database
+  static Future<Map<String, dynamic>> addStudent({
+    required String seatNumber,
+    required String fullName,
+    required String mobileNumber,
+    required String admissionDate,
+    required double monthlyFee,
+    required String shiftType,
+  }) async {
+    final result = await _callDb(
+      "add_student",
+      args: [seatNumber, fullName, mobileNumber, admissionDate, monthlyFee, shiftType],
+    );
+    // Returns student_id (int) or [false, error_msg]
+    if (result is int) {
+      return {"success": true, "student_id": result};
+    } else if (result is List && result.isNotEmpty && result[0] == false) {
+      return {"success": false, "message": result[1]};
+    }
+    return {"success": false, "message": "Unexpected response from server: $result"};
+  }
+
+  /// Update an existing student profile in the database
+  static Future<Map<String, dynamic>> updateStudent({
+    required int studentId,
+    required String fullName,
+    required String mobileNumber,
+    required String admissionDate,
+    required double monthlyFee,
+    required String shiftType,
+  }) async {
+    final result = await _callDb(
+      "update_student",
+      args: [studentId, fullName, mobileNumber, admissionDate, monthlyFee, shiftType],
+    );
+    // Returns [successBool, message]
+    if (result is List && result.length >= 2) {
+      return {
+        "success": result[0],
+        "message": result[1],
+      };
+    }
+    return {"success": false, "message": "Unexpected response from server: $result"};
+  }
+
+  /// Mark a student as an old student (exit)
+  static Future<bool> markOldStudent(int studentId, String exitDate) async {
+    final result = await _callDb("mark_old_student", args: [studentId, exitDate]);
+    return result == true;
+  }
 }
+

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import '../services/api_service.dart';
 import 'student_detail_screen.dart';
+import 'student_form_screen.dart';
+
 
 class StudentsScreen extends StatefulWidget {
   const StudentsScreen({super.key});
@@ -96,6 +98,21 @@ class _StudentsScreenState extends State<StudentsScreen> {
                           ),
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const StudentFormScreen(),
+            ),
+          );
+          if (result == true) {
+            _loadStudents();
+          }
+        },
+        backgroundColor: AppColors.accent,
+        child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white),
       ),
     );
   }
