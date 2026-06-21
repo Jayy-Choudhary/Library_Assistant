@@ -890,6 +890,15 @@ async def db_upload(request: Request, file: UploadFile = File(...)):
         pass
         
     try:
+        # Delete WAL and SHM files to prevent SQLite recovery conflicts with the new database file
+        for ext in ("-wal", "-shm"):
+            extra_file = str(db_file_path) + ext
+            if os.path.exists(extra_file):
+                try:
+                    os.remove(extra_file)
+                except Exception:
+                    pass
+
         # Overwrite the database file
         with open(db_file_path, "wb") as f:
             content = await file.read()
@@ -897,6 +906,16 @@ async def db_upload(request: Request, file: UploadFile = File(...)):
             
         # Re-initialize the local database connection
         db = Database(db_file_path)
+
+        # Touch PythonAnywhere's WSGI configuration to trigger programmatic reload,
+        # forcing all workers to discard connection cache and reload the new database file.
+        wsgi_file = "/var/www/jaychoudhary_pythonanywhere_com_wsgi.py"
+        if os.path.exists(wsgi_file):
+            try:
+                os.utime(wsgi_file, None)
+            except Exception:
+                pass
+
         return JSONResponse({"status": "success", "message": "Database uploaded and replaced successfully"})
     except Exception as e:
         # Re-initialize even on failure to avoid a broken application state

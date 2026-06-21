@@ -1332,6 +1332,16 @@ class Database:
             # Close connection to release file lock on Windows
             self.conn.close()
             
+            # Delete local WAL and SHM files to prevent recovery conflicts with the downloaded database
+            import os
+            for ext in ("-wal", "-shm"):
+                extra_file = str(self.db_path) + ext
+                if os.path.exists(extra_file):
+                    try:
+                        os.remove(extra_file)
+                    except Exception:
+                        pass
+
             # Save downloaded file
             with open(self.db_path, "wb") as f:
                 f.write(res.content)
