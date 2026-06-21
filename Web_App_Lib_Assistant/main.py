@@ -1023,7 +1023,107 @@ def fee_notice_message_api(notice_id: int):
 
 
 # ── WSGI Middleware wrapper for PythonAnywhere ────────────────────────────────
-from a2wsgi import ASGIMiddleware
-wsgi_app = ASGIMiddleware(app)
+# Custom adapter: converts ASGI (FastAPI) → WSGI without background threads.
+# a2wsgi uses threads that hang on PythonAnywhere, so we roll our own.
+import asyncio
+
+def _make_wsgi_app(asgi_app):
+    """Wrap an ASGI app as a WSGI callable — no threads, no hanging."""
+
+    def wsgi_app(environ, start_response):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(
+                _asgi_to_wsgi(asgi_app, environ, start_response)
+            )
+        finally:
+            loop.close()
+
+    return wsgi_app
+
+
+async def _asgi_to_wsgi(asgi_app, environ, start_response):
+    """Run a single ASGI request→response cycle synchronously."""
+
+    # ── Build ASGI scope from WSGI environ ─────────────────────────────
+    http_version = environ.get("SERVER_PROTOCOL", "HTTP/1.1").split("/", 1)[-1]
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": http_version,
+        "method": environ["REQUEST_METHOD"],
+        "path": environ.get("PATH_INFO", "/"),
+        "query_string": environ.get("QUERY_STRING", "").encode("latin-1"),
+        "root_path": environ.get("SCRIPT_NAME", ""),
+        "scheme": environ.get("wsgi.url_scheme", "http"),
+        "server": (
+            environ.get("SERVER_NAME", "localhost"),
+            int(environ.get("SERVER_PORT", "80")),
+        ),
+        "headers": _environ_to_headers(environ),
+    }
+
+    # ── Read request body ──────────────────────────────────────────────
+    try:
+        content_length = int(environ.get("CONTENT_LENGTH") or 0)
+    except (ValueError, TypeError):
+        content_length = 0
+    body = environ["wsgi.input"].read(content_length) if content_length > 0 else b""
+
+    body_sent = False
+
+    async def receive():
+        nonlocal body_sent
+        if not body_sent:
+            body_sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        # After body is sent, wait for disconnect (which won't happen in WSGI)
+        await asyncio.sleep(3600)
+        return {"type": "http.disconnect"}
+
+    # ── Collect response ───────────────────────────────────────────────
+    status_code = 200
+    response_headers = []
+    body_parts = []
+
+    async def send(message):
+        nonlocal status_code, response_headers
+        msg_type = message["type"]
+        if msg_type == "http.response.start":
+            status_code = message["status"]
+            response_headers = [
+                (k.decode("latin-1"), v.decode("latin-1"))
+                for k, v in message.get("headers", [])
+            ]
+        elif msg_type == "http.response.body":
+            chunk = message.get("body", b"")
+            if chunk:
+                body_parts.append(chunk)
+
+    await asgi_app(scope, receive, send)
+
+    # Map status code to reason phrase
+    from http.client import responses as http_reasons
+    reason = http_reasons.get(status_code, "Unknown")
+    start_response(f"{status_code} {reason}", response_headers)
+    return body_parts
+
+
+def _environ_to_headers(environ):
+    """Extract HTTP headers from WSGI environ into ASGI format."""
+    headers = []
+    for key, value in environ.items():
+        if key.startswith("HTTP_"):
+            name = key[5:].lower().replace("_", "-")
+            headers.append((name.encode("latin-1"), value.encode("latin-1")))
+        elif key == "CONTENT_TYPE":
+            headers.append((b"content-type", value.encode("latin-1")))
+        elif key == "CONTENT_LENGTH":
+            headers.append((b"content-length", value.encode("latin-1")))
+    return headers
+
+
+wsgi_app = _make_wsgi_app(app)
 
 
