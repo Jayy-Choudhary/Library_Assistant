@@ -865,6 +865,12 @@ def db_download(request: Request):
     if not os.path.exists(db_file_path):
         return JSONResponse({"error": "Database file not found"}, status_code=404)
         
+    # Flush any server-side database WAL cache back to the main database file before serving the download
+    try:
+        db.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except Exception:
+        pass
+
     return FileResponse(
         db_file_path,
         media_type="application/octet-stream",
