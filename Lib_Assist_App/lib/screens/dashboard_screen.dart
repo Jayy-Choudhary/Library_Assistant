@@ -3,6 +3,7 @@ import '../theme/colors.dart';
 import '../services/api_service.dart';
 import 'settings_screen.dart';
 import 'rooms_screen.dart';
+import 'analytics_screen.dart';
 
 
 
@@ -50,6 +51,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: const Text('📊 Dashboard'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.analytics_outlined),
+            tooltip: 'Analytics & Reports',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AnalyticsScreen(),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Connection Settings',
@@ -170,7 +183,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.between,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
                       item['title'],
@@ -234,7 +247,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 12.0),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.between,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(
                           children: [

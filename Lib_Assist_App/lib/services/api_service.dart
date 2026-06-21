@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -149,6 +150,38 @@ class ApiService {
     await _callDb("mark_notice_sent", args: [noticeId]);
   }
 
+  /// Fetch all active students with their fee records (for fee management screen)
+  static Future<List<dynamic>> getFeesWithStudents() async {
+    final result = await _callDb("get_fees_with_students");
+    return List<dynamic>.from(result);
+  }
+
+  /// Get computed fee status for a student (Paid, Reminder Due, Due, Overdue, Cancelled, Active)
+  static Future<String> getFeeStatus(int studentId) async {
+    final result = await _callDb("get_fee_status", args: [studentId]);
+    return result?.toString() ?? "Active";
+  }
+
+  /// Update a student's monthly fee and optionally their due amount
+  static Future<void> updateMonthlyFee(int studentId, double monthlyFee, {double? newDue}) async {
+    if (newDue != null) {
+      await _callDb("update_monthly_fee", args: [studentId, monthlyFee, newDue]);
+    } else {
+      await _callDb("update_monthly_fee", args: [studentId, monthlyFee]);
+    }
+  }
+
+  /// Trigger server-side fee notice generation (safe to call repeatedly)
+  static Future<void> generateFeeNotices() async {
+    await _callDb("generate_fee_notices");
+  }
+
+  /// Fetch analytics data (revenue trends, occupancy, fee status distribution, etc.)
+  static Future<Map<String, dynamic>> getAnalyticsData() async {
+    final result = await _callDb("get_analytics_data");
+    return Map<String, dynamic>.from(result);
+  }
+
   /// Fetch seats compatible with a target shift type
   static Future<List<String>> getCompatibleSeats(String shiftType) async {
     final result = await _callDb("get_compatible_seats", args: [shiftType]);
@@ -224,6 +257,62 @@ class ApiService {
       };
     }
     return {"rows": 5, "columns": 5, "spacing": 8};
+  }
+
+  /// Build the URL where a student's photo is served, given the photo_path stored in DB.
+  /// The server mounts /student_photos -> student_photos/ directory.
+  /// photo_path in DB is an absolute server path; we extract the filename only.
+  static String? getStudentPhotoUrl(String? photoPath) {
+    if (photoPath == null || photoPath.isEmpty) return null;
+    // Extract filename from path (handles both / and \ separators)
+    final filename = photoPath.split('/').last.split('\\').last;
+    if (filename.isEmpty) return null;
+    return "$baseUrl/student_photos/$filename";
+  }
+
+  /// Build the URL for student photo thumbnail
+  static String? getStudentThumbUrl(String? photoPath) {
+    if (photoPath == null || photoPath.isEmpty) return null;
+    final filename = photoPath.split('/').last.split('\\').last;
+    if (filename.isEmpty) return null;
+    // Convert "Name_01_9898989898.jpg" -> "Name_01_9898989898_thumb.jpg"
+    final dotIdx = filename.lastIndexOf('.');
+    if (dotIdx < 0) return "$baseUrl/student_photos/$filename";
+    final stem = filename.substring(0, dotIdx);
+    final ext = filename.substring(dotIdx);
+    return "$baseUrl/student_photos/${stem}_thumb$ext";
+  }
+
+  /// Fetch student photo_path from database
+  static Future<String?> getStudentPhotoPath(int studentId) async {
+    final result = await _callDb("get_student_photo_path", args: [studentId]);
+    return result?.toString();
+  }
+
+  /// Upload a photo file for a student via multipart POST
+  static Future<Map<String, dynamic>> uploadStudentPhoto(int studentId, File photoFile) async {
+    final uri = Uri.parse("$baseUrl/api/student-photo/upload");
+
+    final request = http.MultipartRequest('POST', uri);
+    request.headers['X-API-Key'] = apiKey;
+    request.fields['student_id'] = studentId.toString();
+    request.files.add(
+      await http.MultipartFile.fromPath('photo', photoFile.path),
+    );
+
+    try {
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 30));
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode != 200) {
+        final body = jsonDecode(response.body);
+        throw Exception(body['error'] ?? 'Upload failed (${response.statusCode})');
+      }
+
+      return Map<String, dynamic>.from(jsonDecode(response.body));
+    } catch (e) {
+      throw Exception("Photo upload failed: $e");
+    }
   }
 }
 

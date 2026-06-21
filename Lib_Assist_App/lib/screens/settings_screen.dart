@@ -95,7 +95,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.bottom(24),
+                margin: const EdgeInsets.only(bottom: 24),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(12),

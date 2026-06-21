@@ -853,6 +853,62 @@ async def db_call(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.post("/api/student-photo/upload")
+async def student_photo_upload(
+    request: Request,
+    student_id: int = Form(...),
+    photo: UploadFile = File(...),
+):
+    """Secure endpoint for mobile app to upload a student photo."""
+    from fastapi.responses import JSONResponse
+
+    client_key = request.headers.get("X-API-Key")
+    if client_key != API_KEY:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    # Verify student exists
+    student = db.get_student_by_id(student_id)
+    if student is None:
+        return JSONResponse({"error": "Student not found"}, status_code=404)
+
+    # Validate file extension
+    ok, err = validate_image_extension(photo.filename or "")
+    if not ok:
+        return JSONResponse({"error": err}, status_code=400)
+
+    repo_student_dir = str(STUDENT_PHOTOS_DIR)
+    ensure_dir(repo_student_dir)
+
+    tmp_path = os.path.join(repo_student_dir, "_upload_tmp_api")
+    with open(tmp_path, "wb") as f:
+        f.write(await photo.read())
+
+    try:
+        name = student["full_name"] or "Student"
+        seat = student["seat_number"] or "00"
+        mobile = student["mobile_number"] or "0000000000"
+
+        full_filename, thumb_filename = make_photo_filenames(
+            name, seat, mobile, tmp_path, photo_dir=repo_student_dir,
+        )
+
+        full_path = os.path.join(repo_student_dir, full_filename)
+        thumb_path = os.path.join(repo_student_dir, thumb_filename)
+        resize_and_save_photo(tmp_path, full_path, thumb_path)
+        db.set_student_photo_path(student_id, full_path)
+
+        return JSONResponse({
+            "success": True,
+            "filename": full_filename,
+            "thumb_filename": thumb_filename,
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
 @app.get("/api/db/download")
 def db_download(request: Request):
     """Secure endpoint to download the SQLite database file."""

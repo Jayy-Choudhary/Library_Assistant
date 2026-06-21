@@ -17,13 +17,11 @@ class _RoomsScreenState extends State<RoomsScreen> {
 
   String _selectedRoom = 'A'; // 'A' | 'B' | 'C'
   List<dynamic> _allSeats = [];
-  List<dynamic> _activeStudents = [];
   Map<String, List<dynamic>> _groupedOccupants = {};
 
   // Room layout stats
   int _rows = 5;
   int _columns = 5;
-  int _spacing = 8;
 
   @override
   void initState() {
@@ -52,16 +50,14 @@ class _RoomsScreenState extends State<RoomsScreen> {
       for (var student in studentsData) {
         final seat = student['seat_number'] as String?;
         if (seat != null) {
-          grouped.setdefault(seat, []).add(student);
+          grouped.putIfAbsent(seat, () => []).add(student);
         }
       }
 
       setState(() {
         _rows = layout['rows'] ?? 5;
         _columns = layout['columns'] ?? 5;
-        _spacing = layout['spacing'] ?? 8;
         _allSeats = seatsData;
-        _activeStudents = studentsData;
         _groupedOccupants = grouped;
         _isLoading = false;
       });
@@ -190,7 +186,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
               selectedColor: AppColors.accent,
               backgroundColor: AppColors.primary.withAlpha(50),
               checkmarkColor: Colors.white,
-              borderStyle: BorderStyle.none,
+              side: BorderSide.none,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               onSelected: (selected) {
                 if (selected) {
@@ -229,8 +225,6 @@ class _RoomsScreenState extends State<RoomsScreen> {
   }
 
   Widget _buildSeatTile(String seatNumber, List<dynamic> occupants, Color color, String shortLabel) {
-    final bool isOccupied = occupants.isNotEmpty;
-
     return InkWell(
       onTap: () => _handleSeatClick(seatNumber, occupants),
       borderRadius: BorderRadius.circular(12),
@@ -323,7 +317,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.between,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     'Seat $seatNumber Occupancy',
@@ -401,9 +395,11 @@ class _RoomsScreenState extends State<RoomsScreen> {
 
   Widget _buildColorLegend() {
     return Container(
-      color: AppColors.cardBg,
+      decoration: const BoxDecoration(
+        color: AppColors.cardBg,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-      border: const Border(top: BorderSide(color: AppColors.border)),
       child: Column(
         children: [
           Row(

@@ -170,7 +170,7 @@ class _StudentsScreenState extends State<StudentsScreen> {
                   selectedColor: AppColors.accent,
                   backgroundColor: AppColors.primary.withAlpha(50),
                   checkmarkColor: Colors.white,
-                  borderStyle: BorderStyle.none,
+                  side: BorderSide.none,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                   onSelected: (selected) {
                     if (selected) {
@@ -192,8 +192,8 @@ class _StudentsScreenState extends State<StudentsScreen> {
 
   Widget _buildStudentCard(Map<String, dynamic> student) {
     final bool isActive = student['status'] == 'Active';
-    final photoPath = student['photo_path'];
-    final photoUrl = photoPath != null ? "${ApiService.baseUrl}/student_photos/$photoPath" : null;
+    final photoPath = student['photo_path']?.toString();
+    final photoUrl = ApiService.getStudentPhotoUrl(photoPath);
 
     return Card(
       child: ListTile(

@@ -256,7 +256,7 @@ class _NoticeScreenState extends State<NoticeScreen> {
               selectedColor: AppColors.accent,
               backgroundColor: AppColors.primary.withAlpha(50),
               checkmarkColor: Colors.white,
-              borderStyle: BorderStyle.none,
+              side: BorderSide.none,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               onSelected: (selected) {
                 if (selected) {

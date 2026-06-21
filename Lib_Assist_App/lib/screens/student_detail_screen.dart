@@ -106,15 +106,15 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
 
     final student = _student!;
     final bool isActive = student['status'] == 'Active';
-    final photoPath = student['photo_path'];
-    final photoUrl = photoPath != null ? "${ApiService.baseUrl}/student_photos/$photoPath" : null;
+    final photoPath = student['photo_path']?.toString();
+    final photoUrl = ApiService.getStudentPhotoUrl(photoPath);
 
     final double dueAmount = _feeRecord != null ? double.parse((_feeRecord!['due_amount'] ?? 0).toString()) : 0.0;
     final double monthlyFee = _feeRecord != null ? double.parse((_feeRecord!['monthly_fee'] ?? 0).toString()) : 0.0;
 
     return PopScope(
       canPop: true,
-      onPopInvokedWithResult: (didPop, result) {
+      onPopInvoked: (didPop) {
         // Return changes status to parent screen to refresh list
       },
 
@@ -352,7 +352,7 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
             ),
             const Divider(height: 24),
             Row(
-              mainAxisAlignment: MainAxisAlignment.between,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildFeeStatItem('Monthly Fee', '₹${monthlyFee.toStringAsFixed(0)}'),
                 _buildFeeStatItem('Due Amount', '₹${dueAmount.toStringAsFixed(0)}', isDue: dueAmount > 0),
@@ -380,7 +380,7 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
         Text(
           value,
           style: TextStyle(
-            fontWeight: FontWeight.extrabold,
+            fontWeight: FontWeight.w800,
             fontSize: 20,
             color: isDue ? AppColors.danger : AppColors.textPrimary,
           ),
@@ -422,7 +422,7 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.between,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary, fontSize: 14)),

@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
 import '../theme/colors.dart';
 import '../services/api_service.dart';
 
@@ -32,6 +34,11 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
   // Dropdowns lists
   List<String> _compatibleSeats = [];
   String? _initialSeat; // To preserve current seat when editing
+
+  // Photo state
+  File? _pickedPhotoFile;
+  String? _existingPhotoUrl; // Photo URL from server (edit mode)
+  bool _isUploadingPhoto = false;
 
   final List<Map<String, String>> _shifts = [
     {'value': 'FULL_DAY', 'label': 'Full Day (24 hrs)'},
@@ -71,6 +78,10 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
           final double monthly = double.parse((fees['monthly_fee'] ?? 0).toString());
           _feeCtrl.text = monthly.toStringAsFixed(0);
         }
+
+        // Load existing photo URL
+        final photoPath = student['photo_path']?.toString();
+        _existingPhotoUrl = ApiService.getStudentPhotoUrl(photoPath);
       });
 
       // Load seats compatible with current shift
@@ -125,6 +136,120 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
     }
   }
 
+  Future<void> _pickPhoto(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final XFile? picked = await picker.pickImage(
+        source: source,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+      if (picked != null) {
+        setState(() {
+          _pickedPhotoFile = File(picked.path);
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Could not pick image: $e"),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+
+  void _showPhotoPickerSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.cardBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.textSecondary.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Text(
+                'Student Photo',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.camera_alt_rounded, color: AppColors.primary),
+                ),
+                title: const Text('Take Photo', style: TextStyle(color: AppColors.textPrimary)),
+                subtitle: const Text('Use camera to capture', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickPhoto(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.photo_library_rounded, color: AppColors.accent),
+                ),
+                title: const Text('Choose from Gallery', style: TextStyle(color: AppColors.textPrimary)),
+                subtitle: const Text('Select existing photo', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickPhoto(ImageSource.gallery);
+                },
+              ),
+              if (_pickedPhotoFile != null || _existingPhotoUrl != null)
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.danger.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
+                  ),
+                  title: const Text('Remove Photo', style: TextStyle(color: AppColors.danger)),
+                  subtitle: const Text('Clear selected photo', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      _pickedPhotoFile = null;
+                      _existingPhotoUrl = null;
+                    });
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _saveForm() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedSeat == null) {
@@ -147,6 +272,8 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
       final String mobileVal = _mobileCtrl.text.trim();
 
       Map<String, dynamic> response;
+      int? savedStudentId = widget.studentId;
+
       if (widget.studentId == null) {
         // Add Mode
         response = await ApiService.addStudent(
@@ -157,6 +284,9 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
           monthlyFee: feeVal,
           shiftType: _selectedShift,
         );
+        if (response['success'] == true) {
+          savedStudentId = response['student_id'];
+        }
       } else {
         // Edit Mode
         response = await ApiService.updateStudent(
@@ -170,15 +300,42 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
       }
 
       if (response['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(widget.studentId == null
-                ? "Student admitted successfully!"
-                : "Student profile updated successfully!"),
-            backgroundColor: AppColors.success,
-          ),
-        );
-        Navigator.pop(context, true); // Pop back and request list refresh
+        // Upload photo if one was picked
+        if (_pickedPhotoFile != null && savedStudentId != null) {
+          setState(() {
+            _isUploadingPhoto = true;
+          });
+          try {
+            await ApiService.uploadStudentPhoto(savedStudentId, _pickedPhotoFile!);
+          } catch (e) {
+            // Show warning but don't block the save
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("Profile saved, but photo upload failed: $e"),
+                  backgroundColor: AppColors.warning,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            }
+          } finally {
+            setState(() {
+              _isUploadingPhoto = false;
+            });
+          }
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(widget.studentId == null
+                  ? "Student admitted successfully!"
+                  : "Student profile updated successfully!"),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          Navigator.pop(context, true); // Pop back and request list refresh
+        }
       } else {
         throw Exception(response['message'] ?? "Operation failed.");
       }
@@ -201,6 +358,160 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
         _isSaving = false;
       });
     }
+  }
+
+  Widget _buildPhotoSection() {
+    final bool hasLocalPhoto = _pickedPhotoFile != null;
+    final bool hasServerPhoto = _existingPhotoUrl != null;
+
+    return Center(
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: _showPhotoPickerSheet,
+            child: Stack(
+              children: [
+                // Avatar circle
+                Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: hasLocalPhoto || hasServerPhoto
+                        ? null
+                        : LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              AppColors.primary.withOpacity(0.15),
+                              AppColors.accent.withOpacity(0.15),
+                            ],
+                          ),
+                    border: Border.all(
+                      color: hasLocalPhoto
+                          ? AppColors.success.withOpacity(0.6)
+                          : AppColors.primary.withOpacity(0.3),
+                      width: 3,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (hasLocalPhoto ? AppColors.success : AppColors.primary).withOpacity(0.15),
+                        blurRadius: 20,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: hasLocalPhoto
+                        ? Image.file(
+                            _pickedPhotoFile!,
+                            fit: BoxFit.cover,
+                            width: 120,
+                            height: 120,
+                          )
+                        : hasServerPhoto
+                            ? Image.network(
+                                _existingPhotoUrl!,
+                                fit: BoxFit.cover,
+                                width: 120,
+                                height: 120,
+                                errorBuilder: (_, __, ___) => _buildPhotoPlaceholder(),
+                                loadingBuilder: (ctx, child, progress) {
+                                  if (progress == null) return child;
+                                  return Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.primary.withOpacity(0.5),
+                                    ),
+                                  );
+                                },
+                              )
+                            : _buildPhotoPlaceholder(),
+                  ),
+                ),
+
+                // Camera badge
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: AppColors.accent,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.cardBg, width: 3),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.accent.withOpacity(0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.camera_alt_rounded, size: 16, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            hasLocalPhoto
+                ? '📷 New photo selected'
+                : hasServerPhoto
+                    ? 'Tap to change photo'
+                    : 'Tap to add photo',
+            style: TextStyle(
+              fontSize: 12,
+              color: hasLocalPhoto ? AppColors.success : AppColors.textSecondary,
+              fontWeight: hasLocalPhoto ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+          if (_isUploadingPhoto)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.primary.withOpacity(0.7),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Uploading photo…',
+                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhotoPlaceholder() {
+    return Container(
+      width: 120,
+      height: 120,
+      color: Colors.transparent,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.person_rounded, size: 44, color: AppColors.textSecondary.withOpacity(0.4)),
+          const SizedBox(height: 4),
+          Text(
+            'Add Photo',
+            style: TextStyle(fontSize: 10, color: AppColors.textSecondary.withOpacity(0.5)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -254,11 +565,15 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Photo Section
+              _buildPhotoSection(),
+              const SizedBox(height: 24),
+
               // Banner info
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.bottom(20),
+                margin: const EdgeInsets.only(bottom: 20),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(12),

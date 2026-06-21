@@ -1280,6 +1280,111 @@ class Database:
             cur.execute(sql)
         return cur.fetchall()
 
+    def get_analytics_data(self):
+        """Compute analytics data in a single call for the mobile app."""
+        from datetime import datetime, date
+        today = date.today()
+
+        # 1. Monthly revenue for last 6 months
+        monthly_revenue = []
+        for i in range(5, -1, -1):
+            # Calculate month start/end
+            month = today.month - i
+            year = today.year
+            while month <= 0:
+                month += 12
+                year -= 1
+            month_start = f"{year}-{month:02d}-01"
+            if month == 12:
+                month_end = f"{year + 1}-01-01"
+            else:
+                month_end = f"{year}-{month + 1:02d}-01"
+
+            row = self.conn.execute(
+                "SELECT COALESCE(SUM(amount), 0) as total FROM payment_history WHERE payment_date >= ? AND payment_date < ?",
+                (month_start, month_end)
+            ).fetchone()
+            month_label = datetime(year, month, 1).strftime("%b")
+            monthly_revenue.append({
+                "month": month_label,
+                "year": year,
+                "total": float(row["total"]) if row else 0,
+            })
+
+        # 2. Seat occupancy
+        total, occupied, available = self.seat_counts()
+        occupancy = {
+            "total": total,
+            "occupied": occupied,
+            "available": available,
+            "rate": round((occupied / total * 100) if total > 0 else 0, 1),
+        }
+
+        # 3. Fee status distribution
+        active_students = self.conn.execute(
+            "SELECT id FROM students WHERE status='Active'"
+        ).fetchall()
+        status_dist = {"Paid": 0, "Active": 0, "Reminder Due": 0, "Due": 0, "Overdue": 0}
+        for s in active_students:
+            st = self.get_fee_status(s["id"])
+            if st in status_dist:
+                status_dist[st] += 1
+            else:
+                status_dist[st] = status_dist.get(st, 0) + 1
+
+        # 4. Shift distribution
+        shift_rows = self.conn.execute(
+            "SELECT shift_type, COUNT(*) as cnt FROM students WHERE status='Active' GROUP BY shift_type"
+        ).fetchall()
+        shift_dist = {}
+        for r in shift_rows:
+            label = r["shift_type"] or "FULL_DAY"
+            shift_dist[label] = r["cnt"]
+
+        # 5. Monthly admissions trend (last 6 months)
+        monthly_admissions = []
+        for i in range(5, -1, -1):
+            month = today.month - i
+            year = today.year
+            while month <= 0:
+                month += 12
+                year -= 1
+            month_start = f"{year}-{month:02d}-01"
+            if month == 12:
+                month_end = f"{year + 1}-01-01"
+            else:
+                month_end = f"{year}-{month + 1:02d}-01"
+
+            row = self.conn.execute(
+                "SELECT COUNT(*) as cnt FROM students WHERE admission_date >= ? AND admission_date < ?",
+                (month_start, month_end)
+            ).fetchone()
+            month_label = datetime(year, month, 1).strftime("%b")
+            monthly_admissions.append({
+                "month": month_label,
+                "count": row["cnt"] if row else 0,
+            })
+
+        # 6. Total revenue all-time
+        total_revenue_row = self.conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) as total FROM payment_history"
+        ).fetchone()
+        total_revenue = float(total_revenue_row["total"]) if total_revenue_row else 0
+
+        # 7. Total active / old counts
+        active_count, old_count = self.count_students()
+
+        return {
+            "monthly_revenue": monthly_revenue,
+            "occupancy": occupancy,
+            "fee_status_distribution": status_dist,
+            "shift_distribution": shift_dist,
+            "monthly_admissions": monthly_admissions,
+            "total_revenue": total_revenue,
+            "active_students": active_count,
+            "old_students": old_count,
+        }
+
     def get_dashboard_metrics(self):
         """Fetch all dashboard metrics in a single database call (essential for remote optimization)."""
         total, occupied, available = self.seat_counts()
