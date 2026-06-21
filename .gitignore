@@ -131,3 +131,6 @@ logs/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Flutter App Exception
+!Lib_Assist_App/lib/
