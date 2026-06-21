@@ -26,6 +26,10 @@ class Database:
 
         self.conn.row_factory = sqlite3.Row
         self._configure_connection()
+        self.run_migrations()
+
+    def run_migrations(self):
+        """Run all schema tables and column migration steps (idempotent)."""
         self._create_tables()
         self._ensure_seats_room_column()
         self._migrate_fees_subscription_columns()
@@ -1341,6 +1345,7 @@ class Database:
             )
             self.conn.row_factory = sqlite3.Row
             self._configure_connection()
+            self.run_migrations()
             return True, "Database downloaded and synced from cloud successfully!"
         except Exception as e:
             # Reopen if closed to avoid leaving connection in broken state
@@ -1353,6 +1358,7 @@ class Database:
                 )
                 self.conn.row_factory = sqlite3.Row
                 self._configure_connection()
+                self.run_migrations()
             except Exception:
                 pass
             return False, f"Failed to download cloud database: {e}"
