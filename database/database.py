@@ -11,8 +11,6 @@ GRACE_PERIOD_DAYS = 3
 
 class Database:
     def __new__(cls, db_path=None):
-        if REMOTE_URL:
-            return RemoteDatabaseProxy(REMOTE_URL, API_KEY)
         instance = super().__new__(cls)
         return instance
 
@@ -1310,6 +1308,88 @@ class Database:
             "due_notices": due_notices,
             "overdue_notices": overdue_notices
         }
+
+    def download_from_cloud(self):
+        """Download database from PythonAnywhere and replace local database."""
+        if not REMOTE_URL:
+            return False, "Cloud Sync is not configured (no REMOTE_URL set)."
+            
+        import requests
+        headers = {"X-API-Key": API_KEY}
+        try:
+            res = requests.get(f"{REMOTE_URL.rstrip('/')}/api/db/download", headers=headers, timeout=15)
+            if res.status_code != 200:
+                try:
+                    err_msg = res.json().get("error", res.text)
+                except Exception:
+                    err_msg = res.text
+                return False, f"Server returned error: {err_msg}"
+                
+            # Close connection to release file lock on Windows
+            self.conn.close()
+            
+            # Save downloaded file
+            with open(self.db_path, "wb") as f:
+                f.write(res.content)
+                
+            # Reopen connection
+            import sqlite3
+            self.conn = sqlite3.connect(
+                self.db_path,
+                timeout=10,
+                check_same_thread=False,
+            )
+            self.conn.row_factory = sqlite3.Row
+            self._configure_connection()
+            return True, "Database downloaded and synced from cloud successfully!"
+        except Exception as e:
+            # Reopen if closed to avoid leaving connection in broken state
+            try:
+                import sqlite3
+                self.conn = sqlite3.connect(
+                    self.db_path,
+                    timeout=10,
+                    check_same_thread=False,
+                )
+                self.conn.row_factory = sqlite3.Row
+                self._configure_connection()
+            except Exception:
+                pass
+            return False, f"Failed to download cloud database: {e}"
+
+    def upload_to_cloud(self):
+        """Upload local database to PythonAnywhere, overwriting the cloud database."""
+        if not REMOTE_URL:
+            return False, "Cloud Sync is not configured (no REMOTE_URL set)."
+            
+        import requests
+        headers = {"X-API-Key": API_KEY}
+        try:
+            # Commit and checkpoint WAL mode so all changes are flushed to the main file before upload
+            self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            
+            with open(self.db_path, "rb") as f:
+                files = {"file": ("library_assistant.db", f, "application/octet-stream")}
+                res = requests.post(
+                    f"{REMOTE_URL.rstrip('/')}/api/db/upload",
+                    headers=headers,
+                    files=files,
+                    timeout=20
+                )
+                
+            if res.status_code != 200:
+                try:
+                    err_msg = res.json().get("error", res.text)
+                except Exception:
+                    err_msg = res.text
+                return False, f"Server returned error: {err_msg}"
+                
+            data = res.json()
+            if "error" in data:
+                return False, data["error"]
+            return True, "Local database uploaded and synced to cloud successfully!"
+        except Exception as e:
+            return False, f"Failed to upload local database: {e}"
 
 
 # ── Remote Database Proxy Classes ─────────────────────────────────────────────

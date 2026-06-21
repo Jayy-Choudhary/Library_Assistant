@@ -853,6 +853,57 @@ async def db_call(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/api/db/download")
+def db_download(request: Request):
+    """Secure endpoint to download the SQLite database file."""
+    from fastapi.responses import JSONResponse
+    client_key = request.headers.get("X-API-Key")
+    if client_key != API_KEY:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        
+    db_file_path = db_path_env if db_path_env else DB_PATH
+    if not os.path.exists(db_file_path):
+        return JSONResponse({"error": "Database file not found"}, status_code=404)
+        
+    return FileResponse(
+        db_file_path,
+        media_type="application/octet-stream",
+        filename="library_assistant.db"
+    )
+
+
+@app.post("/api/db/upload")
+async def db_upload(request: Request, file: UploadFile = File(...)):
+    """Secure endpoint to upload and replace the SQLite database file."""
+    from fastapi.responses import JSONResponse
+    client_key = request.headers.get("X-API-Key")
+    if client_key != API_KEY:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        
+    db_file_path = db_path_env if db_path_env else DB_PATH
+    
+    global db
+    try:
+        # Close the local database connection in the web app before overwriting the file
+        db.conn.close()
+    except Exception:
+        pass
+        
+    try:
+        # Overwrite the database file
+        with open(db_file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+            
+        # Re-initialize the local database connection
+        db = Database(db_file_path)
+        return JSONResponse({"status": "success", "message": "Database uploaded and replaced successfully"})
+    except Exception as e:
+        # Re-initialize even on failure to avoid a broken application state
+        db = Database(db_file_path)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.get("/fees/export")
 def fees_export(request: Request):
     from fastapi.responses import PlainTextResponse
