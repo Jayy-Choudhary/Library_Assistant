@@ -1037,6 +1037,114 @@ def fees_export(request: Request):
 
 # ── Rooms ──────────────────────────────────────────────────────
 
+@app.get("/rooms/public", response_class=HTMLResponse)
+def rooms_public(request: Request, room_filter: str = "ALL"):
+    rooms_list = ["A", "B", "C"]
+    seats_cache = list(db.get_all_seats())
+
+    # Fetch active students without mobile numbers or due amounts for privacy
+    active_students = list(db.conn.execute("""
+            SELECT s.id AS student_id,
+                   s.full_name AS full_name,
+                   s.seat_number AS seat_number,
+                   s.shift_type AS shift_type
+            FROM students s
+            WHERE s.status='Active'
+            """).fetchall())
+
+    grouped = {}
+    for s in active_students:
+        grouped.setdefault(s["seat_number"], []).append(s)
+
+    layout_cache = {r: db.get_room_layout(r) for r in rooms_list}
+
+    def compute_state(seat_students):
+        details = []
+        for s in seat_students:
+            st = s["shift_type"] if s["shift_type"] else "FULL_DAY"
+            st_label = {
+                "FULL_DAY": "Full Day",
+                "HALF_DAY_DAY": "Half Day (Day)",
+                "HALF_DAY_NIGHT": "Half Day (Night)",
+            }.get(st, "Full Day")
+            details.append({
+                "full_name": s["full_name"],
+                "shift": st_label
+            })
+
+        if not seat_students:
+            return {"color": "#10B981", "details": []}
+        shifts = [
+            s["shift_type"] if s["shift_type"] else "FULL_DAY" for s in seat_students
+        ]
+        if "FULL_DAY" in shifts:
+            return {
+                "color": "#EF4444",
+                "details": details,
+            }
+        if (
+            len(seat_students) == 2
+            and "HALF_DAY_DAY" in shifts
+            and "HALF_DAY_NIGHT" in shifts
+        ):
+            return {
+                "color": "#2563EB",
+                "details": details,
+            }
+        if len(seat_students) == 1 and shifts[0] in ("HALF_DAY_DAY", "HALF_DAY_NIGHT"):
+            return {"color": "#6B7280", "details": details}
+        return {"color": "#6B7280", "details": details}
+
+    room_filter_norm = (room_filter or "ALL").strip().upper()
+    if room_filter_norm not in ("ALL", "A", "B", "C"):
+        room_filter_norm = "ALL"
+
+    all_tiles = []
+    target_rooms = rooms_list if room_filter_norm == "ALL" else [room_filter_norm]
+
+    for room in target_rooms:
+        _, columns, seat_spacing = layout_cache[room]
+        columns = max(1, int(columns))
+        seat_spacing = max(0, int(seat_spacing))
+
+        seats_in_room = [
+            r["seat_number"]
+            for r in seats_cache
+            if ((r["room"] or "A").strip().upper() == room)
+        ]
+        seats_in_room = sorted(seats_in_room)
+
+        tiles = []
+        for seat_number in seats_in_room:
+            st = compute_state(grouped.get(seat_number, []))
+            tiles.append(
+                {
+                    "seat_number": seat_number,
+                    "color": st["color"],
+                    "details": st["details"],
+                    "row": None,
+                    "col": None,
+                }
+            )
+
+        for i, t in enumerate(tiles):
+            t["row"] = i // columns
+            t["col"] = i % columns
+
+        all_tiles.append(
+            {
+                "room": room,
+                "columns": columns,
+                "seat_spacing": seat_spacing,
+                "tiles": tiles,
+            }
+        )
+
+    return _render(
+        request, "rooms_public.html", room_filter=room_filter_norm, all_tiles=all_tiles
+    )
+
+
 @app.get("/rooms", response_class=HTMLResponse)
 def rooms(request: Request, room_filter: str = "ALL"):
 

@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Library Seat Vacancies & Occupancy</title>
+    
+    <!-- Premium Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg: #0B0F19;
+            --surface: #121826;
+            --surface-hover: #1A2234;
+            --text-primary: #F3F4F6;
+            --text-secondary: #9CA3AF;
+            --border: rgba(255, 255, 255, 0.06);
+            --primary: #4F6FFF;
+            
+            /* Seat Colors */
+            --avail: #10B981;
+            --occupied: #EF4444;
+            --doubly: #2563EB;
+            --half: #6B7280;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            width: 100%;
+            max-width: 1200px;
+            margin-bottom: 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-title h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #FFF 30%, var(--primary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .header-title p {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        /* Filter Controls */
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .controls label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        select {
+            padding: 10px 16px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background-color: var(--surface);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            outline: none;
+            transition: border-color 0.15s ease;
+        }
+
+        select:focus {
+            border-color: var(--primary);
+        }
+
+        /* Container Main */
+        main {
+            width: 100%;
+            max-width: 1200px;
+            flex: 1;
+        }
+
+        /* Legend Panel */
+        .legend {
+            background-color: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 16px 20px;
+            margin-bottom: 28px;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 24px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .legend-color {
+            width: 14px;
+            height: 14px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Rooms Visual Grid */
+        .rooms-layout-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 20px;
+        }
+
+        .room-card {
+            background-color: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .room-title-bar {
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .room-name {
+            font-family: 'Outfit', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: #FFF;
+        }
+
+        .room-stats {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* Seat Grid Box */
+        .seat-grid {
+            display: grid;
+            grid-template-columns: repeat(var(--cols), 1fr);
+            gap: var(--gap);
+        }
+
+        .seat {
+            color: #FFF;
+            border-radius: 10px;
+            padding: 12px 6px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 700;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            cursor: pointer;
+            transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease;
+        }
+
+        .seat:hover {
+            transform: scale(1.08);
+            filter: brightness(1.15);
+        }
+
+        /* Modal Details */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(7, 10, 18, 0.85);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .modal-backdrop.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background-color: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            width: 90%;
+            max-width: 420px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+            overflow: hidden;
+            animation: modal-pop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes modal-pop {
+            from {
+                opacity: 0;
+                transform: scale(0.94) translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .modal-header {
+            background: rgba(79, 111, 255, 0.08);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 18px;
+            font-weight: 700;
+            color: #FFF;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 24px;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            color: #FFF;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .student-occupant-card {
+            background-color: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 10px;
+        }
+
+        .student-occupant-card:last-child {
+            margin-bottom: 0;
+        }
+
+        .student-name {
+            font-weight: 700;
+            font-size: 15px;
+            color: #FFF;
+            margin-bottom: 4px;
+        }
+
+        .student-shift {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .empty-occupant-msg {
+            color: var(--text-secondary);
+            font-size: 14px;
+            text-align: center;
+            padding: 12px 0;
+            font-style: italic;
+        }
+
+        /* Footer */
+        footer {
+            width: 100%;
+            max-width: 1200px;
+            margin-top: 40px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-title">
+            <h1>📚 Library Seat Map</h1>
+            <p>Real-time seat vacancies & occupancy status</p>
+        </div>
+        
+        <div class="controls">
+            <label for="room-select">Select Room</label>
+            <select id="room-select" onchange="filterRoom(this.value)">
+                <option value="ALL" {% if room_filter == 'ALL' %}selected{% endif %}>Show All Rooms</option>
+                <option value="A" {% if room_filter == 'A' %}selected{% endif %}>Room A</option>
+                <option value="B" {% if room_filter == 'B' %}selected{% endif %}>Room B</option>
+                <option value="C" {% if room_filter == 'C' %}selected{% endif %}>Room C</option>
+            </select>
+        </div>
+    </header>
+
+    <main>
+        <!-- Color Legend -->
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: var(--avail);"></div>
+                <span>Available / Vacant</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: var(--half);"></div>
+                <span>Half Occupied (1 Shift free)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: var(--occupied);"></div>
+                <span>Fully Occupied (Full Day)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: var(--doubly);"></div>
+                <span>Doubly Occupied (Both Half Shifts)</span>
+            </div>
+        </div>
+
+        <!-- Rooms Visual Grid Layout -->
+        <div class="rooms-layout-grid">
+            {% for room in all_tiles %}
+            <div class="room-card" id="room-card-{{ room.room }}">
+                <div class="room-title-bar">
+                    <div class="room-name">Room {{ room.room }}</div>
+                    <div class="room-stats">{{ room.tiles|length }} Seats total</div>
+                </div>
+
+                <div class="seat-grid" style="--cols: {{ room.columns }}; --gap: {{ room.seat_spacing }}px;">
+                    {% for t in room.tiles %}
+                    <div class="seat" style="background-color: {{ t.color }};"
+                         data-seat="{{ t.seat_number }}"
+                         data-details='{{ t.details|tojson }}'>
+                        {{ t.seat_number }}
+                    </div>
+                    {% else %}
+                    <div class="empty-occupant-msg">No seats added to this room yet.</div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </main>
+
+    <!-- Modal for Seat Details (Excludes mobile numbers and fees for privacy) -->
+    <div class="modal-backdrop" id="seat-details-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title" id="modal-seat-title">Seat Details</div>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-seat-body">
+                <!-- Occupant info injected here -->
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2026 Library Assistant. Designed for students.</p>
+    </footer>
+
+    <script>
+        function filterRoom(val) {
+            window.location.href = `/rooms/public?room_filter=${val}`;
+        }
+
+        const modal = document.getElementById('seat-details-modal');
+        const modalTitle = document.getElementById('modal-seat-title');
+        const modalBody = document.getElementById('modal-seat-body');
+
+        // Attach click listeners to all seats
+        document.querySelectorAll('.seat').forEach(seat => {
+            seat.addEventListener('click', () => {
+                const seatNum = seat.getAttribute('data-seat');
+                const detailsStr = seat.getAttribute('data-details');
+                
+                modalTitle.textContent = `💺 Seat ${seatNum}`;
+                modalBody.innerHTML = '';
+
+                let details = [];
+                try {
+                    details = JSON.parse(detailsStr) || [];
+                } catch(e) {
+                    console.error("Error parsing seat details", e);
+                }
+
+                if (details.length === 0) {
+                    modalBody.innerHTML = '<div class="empty-occupant-msg">This seat is currently vacant and available.</div>';
+                } else {
+                    details.forEach(occupant => {
+                        const div = document.createElement('div');
+                        div.className = 'student-occupant-card';
+                        div.innerHTML = `
+                            <div class="student-name">${occupant.full_name}</div>
+                            <div class="student-shift"><strong>Shift:</strong> ${occupant.shift}</div>
+                        `;
+                        modalBody.appendChild(div);
+                    });
+                }
+
+                modal.classList.add('show');
+            });
+        });
+
+        function closeModal() {
+            modal.classList.remove('show');
+        }
+
+        // Close when clicking background
+        window.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>
