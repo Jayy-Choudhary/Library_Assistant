@@ -5,5 +5,7 @@ python-multipart==0.0.9
 a2wsgi>=1.10.10
 selenium>=4.20.0
 pyperclip>=1.8.2
+Pillow>=10.0.0
+
 
 
