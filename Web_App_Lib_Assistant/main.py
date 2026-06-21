@@ -29,6 +29,9 @@ app = FastAPI(title="Library Assistant Web")
 
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
+# Ensure student_photos directory exists (may not after a fresh git clone)
+os.makedirs(str(STUDENT_PHOTOS_DIR), exist_ok=True)
+
 # Serve student photos from the existing folder at repo root.
 app.mount(
     "/student_photos",
@@ -45,7 +48,10 @@ app.mount(
 
 db_path_env = os.getenv("DATABASE_PATH")
 db = Database(db_path_env if db_path_env else DB_PATH)
-db.generate_fee_notices()
+try:
+    db.generate_fee_notices()
+except Exception:
+    pass  # DB may be freshly created with no data yet
 
 # ── Persistent Selenium WhatsApp driver ──────────────────────────────────────
 _wa_driver = None
