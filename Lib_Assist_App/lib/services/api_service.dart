@@ -205,5 +205,25 @@ class ApiService {
     final result = await _callDb("mark_old_student", args: [studentId, exitDate]);
     return result == true;
   }
+
+  /// Fetch all seats registered in the database
+  static Future<List<dynamic>> getAllSeats() async {
+    final result = await _callDb("get_all_seats");
+    return List<dynamic>.from(result);
+  }
+
+  /// Fetch layout size (rows, columns, spacing) for a specific room
+  static Future<Map<String, int>> getRoomLayout(String room) async {
+    final result = await _callDb("get_room_layout", args: [room]);
+    // Returns List: [rows, columns, seat_spacing]
+    if (result is List && result.length >= 3) {
+      return {
+        "rows": int.parse(result[0].toString()),
+        "columns": int.parse(result[1].toString()),
+        "spacing": int.parse(result[2].toString()),
+      };
+    }
+    return {"rows": 5, "columns": 5, "spacing": 8};
+  }
 }
 

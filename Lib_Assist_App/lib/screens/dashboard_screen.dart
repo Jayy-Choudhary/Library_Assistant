@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import '../services/api_service.dart';
 import 'settings_screen.dart';
+import 'rooms_screen.dart';
+
 
 
 class DashboardScreen extends StatefulWidget {
@@ -82,6 +84,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       children: [
                         const SizedBox(height: 16),
                         _buildStatGrid(),
+                        const SizedBox(height: 8),
+                        _buildRoomsLayoutCard(),
                         const SizedBox(height: 8),
                         _buildDueStudentsCard(),
                         const SizedBox(height: 24),
@@ -264,6 +268,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 },
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRoomsLayoutCard() {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const RoomsScreen(),
+            ),
+          );
+          _loadMetrics();
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: const BoxDecoration(
+                  color: AppColors.accent,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.map_rounded, color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Interactive Room Map',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'View visual seat grid layouts for Rooms A, B & C.',
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+            ],
+          ),
         ),
       ),
     );
