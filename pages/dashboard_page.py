@@ -30,20 +30,6 @@ class DashboardPage(PageBase):
             self,
             ["Seat No.", "Student Name", "Due Amount (₹)"],
             {"Seat No.": 110, "Student Name": 240, "Due Amount (₹)": 160},
-
-        # Due students table
-        tk.Label(
-            self,
-            text="Fee Due Students",
-            font=FONT_HEADER,
-            bg=COLORS["bg"],
-            fg=COLORS["danger"],
-        ).pack(anchor="w", padx=28, pady=(14, 4))
-
-        tframe, self.due_tree = styled_treeview(
-            self,
-            ["Seat No.", "Student Name", "Due Amount (₹)"],
-            {"Seat No.": 110, "Student Name": 240, "Due Amount (₹)": 160},
             height=10,
         )
         tframe.pack(fill="both", expand=True, padx=28, pady=(0, 20))
