@@ -27,6 +27,15 @@ IS_PRODUCTION = APP_ENV == "production"
 
 app = FastAPI(title="Library Assistant Web")
 
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 # Ensure student_photos directory exists (may not after a fresh git clone)

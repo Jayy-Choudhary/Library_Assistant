@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
@@ -36,7 +36,8 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
   String? _initialSeat; // To preserve current seat when editing
 
   // Photo state
-  File? _pickedPhotoFile;
+  XFile? _pickedPhotoFile;
+  Uint8List? _pickedPhotoBytes;
   String? _existingPhotoUrl; // Photo URL from server (edit mode)
   bool _isUploadingPhoto = false;
 
@@ -146,8 +147,10 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
         imageQuality: 85,
       );
       if (picked != null) {
+        final bytes = await picked.readAsBytes();
         setState(() {
-          _pickedPhotoFile = File(picked.path);
+          _pickedPhotoFile = picked;
+          _pickedPhotoBytes = bytes;
         });
       }
     } catch (e) {
@@ -403,8 +406,8 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
                   ),
                   child: ClipOval(
                     child: hasLocalPhoto
-                        ? Image.file(
-                            _pickedPhotoFile!,
+                        ? Image.memory(
+                            _pickedPhotoBytes!,
                             fit: BoxFit.cover,
                             width: 120,
                             height: 120,

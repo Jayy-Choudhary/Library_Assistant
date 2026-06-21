@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'theme/colors.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/students_screen.dart';
+import 'screens/rooms_screen.dart';
 import 'screens/fees_screen.dart';
 import 'screens/notice_screen.dart';
 import 'services/api_service.dart';
@@ -68,6 +69,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   final List<Widget> _screens = [
     const DashboardScreen(),
     const StudentsScreen(),
+    const RoomsScreen(),
     const FeesScreen(),
     const NoticeScreen(),
   ];
@@ -97,6 +99,11 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
             icon: Icon(Icons.people_outline_rounded),
             activeIcon: Icon(Icons.people_rounded),
             label: 'Students',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.meeting_room_outlined),
+            activeIcon: Icon(Icons.meeting_room),
+            label: 'Rooms',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.account_balance_wallet_outlined),

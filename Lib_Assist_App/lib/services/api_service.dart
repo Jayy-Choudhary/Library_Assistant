@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -290,14 +290,20 @@ class ApiService {
   }
 
   /// Upload a photo file for a student via multipart POST
-  static Future<Map<String, dynamic>> uploadStudentPhoto(int studentId, File photoFile) async {
+  static Future<Map<String, dynamic>> uploadStudentPhoto(int studentId, XFile photoFile) async {
     final uri = Uri.parse("$baseUrl/api/student-photo/upload");
 
     final request = http.MultipartRequest('POST', uri);
     request.headers['X-API-Key'] = apiKey;
     request.fields['student_id'] = studentId.toString();
+
+    final bytes = await photoFile.readAsBytes();
     request.files.add(
-      await http.MultipartFile.fromPath('photo', photoFile.path),
+      http.MultipartFile.fromBytes(
+        'photo',
+        bytes,
+        filename: photoFile.name,
+      ),
     );
 
     try {
