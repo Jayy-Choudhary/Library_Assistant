@@ -1,0 +1,606 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section">
+    <div class="row-between">
+        <h2>📢 Fee Notice Center</h2>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <!-- WhatsApp status dot -->
+            <div id="wa-status-wrap" style="display:flex;align-items:center;gap:7px;font-size:0.83rem;color:#64748b;">
+                <span id="wa-status-dot" style="width:10px;height:10px;border-radius:50%;background:#334155;display:inline-block;transition:background .4s;"></span>
+                <span id="wa-status-text">WhatsApp not linked</span>
+            </div>
+            <button class="btn" id="link-wa-btn"
+                    style="background:linear-gradient(135deg,#1d4ed8,#1e40af);color:#fff;font-weight:700;display:flex;align-items:center;gap:6px;"
+                    onclick="linkWhatsApp()">
+                <span>🔗</span> Link WhatsApp
+            </button>
+            <button class="btn" id="send-all-btn"
+                    style="background:linear-gradient(135deg,#059669,#047857);color:#fff;font-weight:700;letter-spacing:.02em;display:flex;align-items:center;gap:7px;box-shadow:0 4px 14px rgba(5,150,105,.35);"
+                    onclick="openAutoSend()">
+                <span style="font-size:1.1em;">🤖</span> Auto-Send All Pending
+            </button>
+            <a class="btn secondary" href="/fees">← Back to Fees</a>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert-error" id="notice-error-banner">⚠️ {{ error }}</div>
+    {% endif %}
+
+    <form method="get" class="filters" style="margin-top:10px;">
+        <div class="filter-group">
+            <label>Filter</label>
+            <select name="filter" onchange="this.form.submit()">
+                <option value="All" {% if filter=='All' %}selected{% endif %}>All</option>
+                <option value="Pending" {% if filter=='Pending' %}selected{% endif %}>Pending</option>
+                <option value="Paid" {% if filter=='Paid' %}selected{% endif %}>Paid</option>
+                <option value="Cancelled" {% if filter=='Cancelled' %}selected{% endif %}>Cancelled</option>
+                <option value="Reminder Due" {% if filter=='Reminder Due' %}selected{% endif %}>Reminder Due</option>
+                <option value="Due" {% if filter=='Due' %}selected{% endif %}>Due</option>
+                <option value="Overdue" {% if filter=='Overdue' %}selected{% endif %}>Overdue</option>
+            </select>
+        </div>
+        <a class="btn secondary" href="/fees/notices?filter=Pending">🔄 Refresh</a>
+    </form>
+
+    <table class="table" id="notices-table">
+        <thead>
+            <tr>
+                <th>Student Name</th><th>Seat</th><th>Mobile</th>
+                <th>Notice Date</th><th>Due Date</th><th>Due Amount</th>
+                <th>Status</th><th style="text-align:center;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            {% set status_lower = r['status']|lower %}
+            <tr class="t-{{ status_lower }} notice-row"
+                data-notice-id="{{ r['id'] }}"
+                style="cursor:pointer;"
+                onclick="selectNotice({{ r['id'] }}, this)">
+                <td><a class="link" href="/students/{{ r['student_id'] }}/profile" onclick="event.stopPropagation()">{{ r['full_name'] }}</a></td>
+                <td>{{ r['seat_number'] }}</td>
+                <td>{{ r['mobile_number'] }}</td>
+                <td>{{ r['notice_date'] }}</td>
+                <td>{{ r['due_date'] }}</td>
+                <td>₹{{ '%.0f'|format(r['due_amount']|float) }}</td>
+                <td><span class="status-badge status-{{ status_lower }}">{{ r['status'] }}</span></td>
+                <td class="right" style="white-space:nowrap;" onclick="event.stopPropagation()">
+                    <a class="btn success small" href="/fees/notices/{{ r['id'] }}/whatsapp"
+                       target="_blank" onclick="event.stopPropagation()">📱 WhatsApp</a>
+                    <button class="btn small" style="background:var(--accent);"
+                            onclick="copyMessage({{ r['id'] }}, event)">📋 Copy</button>
+                    {% if r['status'] == 'Pending' %}
+                    <form method="post" action="/fees/notices/{{ r['id'] }}/cancel" style="display:inline;" onclick="event.stopPropagation()">
+                        <button class="btn danger small" type="submit" onclick="return confirm('Cancel this notice?')">✕</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="muted">No notices found</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Notice Message Preview Panel -->
+    <div id="notice-preview-panel" class="notice-preview-panel" style="display:none;">
+        <div class="notice-preview-header">
+            <span id="preview-student-name">📄 Notice Message</span>
+            <div class="preview-actions">
+                <button class="btn small" style="background:var(--accent);" onclick="copyPreviewMessage()">📋 Copy</button>
+                <button class="btn success small" onclick="openPreviewWhatsApp()">📱 WhatsApp</button>
+                <button class="btn secondary small" onclick="closePreview()">✕ Close</button>
+            </div>
+        </div>
+        <pre id="notice-preview-text" class="notice-preview-text">Select a notice row to preview its message.</pre>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     AUTO-SEND MODAL (pywhatkit SSE)
+══════════════════════════════════════ -->
+<div id="auto-modal-backdrop" class="bulk-backdrop" style="display:none;" onclick="if(event.target===this&&!_autoRunning)closeAutoModal()">
+    <div class="bulk-modal">
+
+        <!-- SETUP SCREEN -->
+        <div id="auto-setup">
+            <div class="bulk-header">
+                <div>
+                    <div class="bulk-title">🤖 Auto-Send WhatsApp Notices</div>
+                    <div id="auto-setup-sub" class="bulk-subtitle">Loading…</div>
+                </div>
+                <button class="bulk-close-btn" onclick="closeAutoModal()">✕</button>
+            </div>
+
+            <div class="auto-checklist">
+                <div class="auto-check-item">
+                    <span class="auto-check-icon">✅</span>
+                    <div>
+                        <div class="auto-check-title">WhatsApp Web must be logged in</div>
+                        <div class="auto-check-sub">Open <a href="https://web.whatsapp.com" target="_blank" style="color:#6366f1;">web.whatsapp.com</a> and scan the QR code if needed</div>
+                    </div>
+                </div>
+                <div class="auto-check-item">
+                    <span class="auto-check-icon">✅</span>
+                    <div>
+                        <div class="auto-check-title">Keep this browser window visible</div>
+                        <div class="auto-check-sub">Don't minimize or lock your screen — pyautogui needs to control the browser</div>
+                    </div>
+                </div>
+                <div class="auto-check-item">
+                    <span class="auto-check-icon">⏱️</span>
+                    <div>
+                        <div class="auto-check-title">Estimated time</div>
+                        <div class="auto-check-sub" id="auto-est-time">~12–15 seconds per student (WhatsApp Web loading)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bulk-actions">
+                <button class="btn" id="auto-start-btn"
+                        style="background:linear-gradient(135deg,#059669,#047857);font-weight:700;font-size:1rem;flex:1;"
+                        onclick="startAutoSend()">
+                    🚀 Start Auto-Send
+                </button>
+                <button class="btn secondary" onclick="closeAutoModal()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- PROGRESS SCREEN -->
+        <div id="auto-progress" style="display:none;">
+            <div class="bulk-header">
+                <div>
+                    <div class="bulk-title">🤖 Auto-Sending…</div>
+                    <div id="auto-prog-sub" class="bulk-subtitle">Starting…</div>
+                </div>
+                <!-- No close button during sending -->
+            </div>
+
+            <div class="bulk-progress-wrap">
+                <div id="auto-progress-bar" class="bulk-progress-bar" style="width:0%"></div>
+            </div>
+            <div id="auto-progress-label" class="bulk-progress-label">–</div>
+
+            <!-- Current student card -->
+            <div id="auto-current-card" class="auto-current-card" style="display:none;">
+                <div id="auto-cur-avatar" class="bulk-student-avatar" style="font-size:1.6rem;">📤</div>
+                <div>
+                    <div id="auto-cur-name" style="font-size:1rem;font-weight:700;color:#e2e8f0;">–</div>
+                    <div id="auto-cur-status" style="font-size:0.82rem;color:#94a3b8;margin-top:3px;">Preparing…</div>
+                </div>
+            </div>
+
+            <!-- Event log -->
+            <div class="auto-log-wrap">
+                <div id="auto-log" class="auto-log"></div>
+            </div>
+        </div>
+
+        <!-- DONE SCREEN -->
+        <div id="auto-done" style="display:none;">
+            <div class="bulk-header">
+                <div><div class="bulk-title">✅ Auto-Send Complete</div></div>
+                <button class="bulk-close-btn" onclick="closeAutoModal()">✕</button>
+            </div>
+            <div style="text-align:center;padding:32px 24px;">
+                <div style="font-size:3.5rem;line-height:1;">🎉</div>
+                <div id="auto-done-msg" style="font-size:1.25rem;font-weight:800;color:#4ade80;margin-top:14px;"></div>
+                <div id="auto-done-sub" style="color:#94a3b8;margin-top:8px;font-size:0.9rem;"></div>
+            </div>
+            <div class="bulk-actions" style="justify-content:center;">
+                <button class="btn" style="background:var(--accent);" onclick="closeAutoModal()">✓ Close</button>
+                <a class="btn secondary" href="/fees/notices?filter=Pending">🔄 Refresh Notices</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast -->
+<div id="copy-toast" class="copy-toast" style="display:none;">✓ Copied!</div>
+
+<style>
+.notice-row:hover { background: rgba(99,102,241,0.07); }
+.notice-row.selected { background: rgba(99,102,241,0.13); outline: 2px solid var(--accent); }
+
+/* Preview panel */
+.notice-preview-panel {
+    margin-top: 18px;
+    background: linear-gradient(135deg,rgba(30,30,50,.97),rgba(20,20,40,.99));
+    border: 1px solid rgba(99,102,241,.35);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,.4);
+    animation: slideDown .22s ease;
+}
+@keyframes slideDown { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
+.notice-preview-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 18px;
+    background: rgba(99,102,241,.15);
+    border-bottom: 1px solid rgba(99,102,241,.25);
+    font-weight: 600; color: #c7d2fe; gap: 12px; flex-wrap: wrap;
+}
+.preview-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.notice-preview-text {
+    padding: 18px 22px; margin: 0;
+    font-family: 'Inter', monospace; font-size: 0.92rem; line-height: 1.7;
+    color: #e2e8f0; white-space: pre-wrap; word-break: break-word; min-height: 80px;
+}
+
+/* Modal backdrop */
+.bulk-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.8);
+    backdrop-filter: blur(8px);
+    z-index: 4000;
+    display: flex; align-items: center; justify-content: center;
+    animation: fadeIn .18s ease;
+}
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+.bulk-modal {
+    background: linear-gradient(145deg,#1a1a35 0%,#111128 100%);
+    border: 1px solid rgba(99,102,241,.3);
+    border-radius: 20px;
+    width: min(580px,96vw);
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 24px 80px rgba(0,0,0,.6);
+    animation: modalPop .22s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes modalPop {
+    from{opacity:0;transform:scale(.92) translateY(20px)}
+    to{opacity:1;transform:scale(1) translateY(0)}
+}
+.bulk-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: 22px 24px 16px;
+    border-bottom: 1px solid rgba(99,102,241,.18);
+}
+.bulk-title { font-size:1.2rem; font-weight:800; color:#e0e7ff; }
+.bulk-subtitle { font-size:0.85rem; color:#94a3b8; margin-top:4px; }
+.bulk-close-btn {
+    background: rgba(255,255,255,.08); border: none; color: #94a3b8;
+    width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
+    font-size: 1rem; transition: all .15s; flex-shrink:0;
+}
+.bulk-close-btn:hover { background:rgba(239,68,68,.25); color:#f87171; }
+
+/* Setup checklist */
+.auto-checklist { padding: 16px 24px; display: flex; flex-direction: column; gap: 14px; }
+.auto-check-item { display:flex; gap:14px; align-items:flex-start; }
+.auto-check-icon { font-size:1.3rem; flex-shrink:0; margin-top:1px; }
+.auto-check-title { font-size:0.93rem; font-weight:600; color:#e2e8f0; }
+.auto-check-sub { font-size:0.82rem; color:#64748b; margin-top:3px; }
+
+/* Progress */
+.bulk-progress-wrap { height:6px; background:rgba(255,255,255,.06); }
+.bulk-progress-bar {
+    height:100%;
+    background: linear-gradient(90deg,#6366f1,#059669);
+    transition: width .5s cubic-bezier(.4,0,.2,1);
+}
+.bulk-progress-label { text-align:right; font-size:0.78rem; color:#64748b; padding:4px 22px 0; }
+
+/* Current card */
+.auto-current-card {
+    display: flex; gap:14px; align-items:center;
+    padding: 16px 24px;
+    background: rgba(99,102,241,.06);
+    border-top: 1px solid rgba(99,102,241,.12);
+    border-bottom: 1px solid rgba(99,102,241,.12);
+}
+.bulk-student-avatar {
+    width:48px; height:48px; border-radius:50%;
+    background: linear-gradient(135deg,#6366f1,#8b5cf6);
+    display:flex; align-items:center; justify-content:center;
+    font-size:1.3rem; font-weight:800; color:#fff; flex-shrink:0;
+    box-shadow: 0 4px 12px rgba(99,102,241,.35);
+}
+
+/* Log */
+.auto-log-wrap {
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 8px 24px 4px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99,102,241,.3) transparent;
+}
+.auto-log { display:flex; flex-direction:column; gap:4px; }
+.auto-log-entry {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 10px; border-radius: 8px;
+    font-size: 0.83rem; animation: fadeIn .2s ease;
+}
+.log-sent { background:rgba(34,197,94,.1); color:#4ade80; }
+.log-sending { background:rgba(99,102,241,.1); color:#a5b4fc; }
+.log-skip  { background:rgba(234,179,8,.08); color:#fbbf24; }
+.log-error { background:rgba(239,68,68,.1); color:#f87171; }
+
+/* Footer */
+.bulk-actions {
+    display:flex; align-items:center; gap:10px;
+    padding: 16px 24px 22px;
+    border-top: 1px solid rgba(99,102,241,.12);
+    flex-wrap: wrap;
+}
+
+/* Alerts */
+.alert-error {
+    background:rgba(239,68,68,.15); border:1px solid rgba(239,68,68,.4);
+    color:#fca5a5; border-radius:10px; padding:12px 18px; margin:12px 0; font-size:.93rem;
+}
+.copy-toast {
+    position:fixed; bottom:28px; right:28px;
+    background:#22c55e; color:#fff; font-weight:600;
+    padding:12px 22px; border-radius:30px;
+    box-shadow:0 4px 20px rgba(34,197,94,.4);
+    font-size:.95rem; z-index:9999;
+    animation: fadeInUp .2s ease;
+}
+@keyframes fadeInUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+</style>
+
+<script>
+/* ── Per-row preview ─────────────────── */
+let _currentNoticeId = null;
+let _messageCache = {};
+
+function showToast(msg) {
+    const t = document.getElementById('copy-toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.display = 'none'; }, 2200);
+}
+
+async function fetchNoticeMessage(id) {
+    if (_messageCache[id]) return _messageCache[id];
+    const res = await fetch(`/fees/notices/${id}/message`);
+    const data = await res.json();
+    _messageCache[id] = data;
+    return data;
+}
+
+async function selectNotice(id, rowEl) {
+    document.querySelectorAll('.notice-row').forEach(r => r.classList.remove('selected'));
+    rowEl.classList.add('selected');
+    _currentNoticeId = id;
+
+    const panel = document.getElementById('notice-preview-panel');
+    const previewText = document.getElementById('notice-preview-text');
+    const previewName = document.getElementById('preview-student-name');
+
+    previewText.textContent = 'Loading…';
+    panel.style.display = 'block';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    const data = await fetchNoticeMessage(id);
+    previewName.textContent = `📄 Notice — ${data.full_name}`;
+    previewText.textContent = data.whatsapp_text || '(No message)';
+}
+
+function closePreview() {
+    document.getElementById('notice-preview-panel').style.display = 'none';
+    document.querySelectorAll('.notice-row').forEach(r => r.classList.remove('selected'));
+    _currentNoticeId = null;
+}
+
+async function copyMessage(id, event) {
+    event.stopPropagation();
+    const data = await fetchNoticeMessage(id);
+    try {
+        await navigator.clipboard.writeText(data.whatsapp_text || data.message || '');
+        showToast('✓ Copied to clipboard!');
+    } catch {
+        const ta = document.createElement('textarea');
+        ta.value = data.whatsapp_text || data.message || '';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('✓ Copied!');
+    }
+}
+
+async function copyPreviewMessage() {
+    if (!_currentNoticeId) return;
+    const data = await fetchNoticeMessage(_currentNoticeId);
+    try { await navigator.clipboard.writeText(data.whatsapp_text || ''); showToast('✓ Copied!'); }
+    catch { showToast('Copy failed.'); }
+}
+
+function openPreviewWhatsApp() {
+    if (!_currentNoticeId) return;
+    window.open(`/fees/notices/${_currentNoticeId}/whatsapp`, '_blank');
+}
+
+/* ── Auto-Send Modal (SSE Selenium) ─── */
+let _autoRunning = false;
+let _autoSse     = null;
+let _waStatusInterval = null;
+
+// Poll WhatsApp link status every 3 seconds
+async function pollWaStatus() {
+    try {
+        const res = await fetch('/fees/notices/whatsapp-status');
+        const d   = await res.json();
+        const dot  = document.getElementById('wa-status-dot');
+        const txt  = document.getElementById('wa-status-text');
+        if (d.linked) {
+            dot.style.background = '#22c55e';
+            txt.textContent = 'WhatsApp linked ✓';
+            txt.style.color = '#4ade80';
+        } else {
+            dot.style.background = d.reason === 'Browser not opened' ? '#334155' : '#f59e0b';
+            txt.textContent = d.reason || 'Not linked';
+            txt.style.color = '#94a3b8';
+        }
+    } catch { /* ignore network errors during polling */ }
+}
+// Start polling
+_waStatusInterval = setInterval(pollWaStatus, 3000);
+pollWaStatus();
+
+async function linkWhatsApp() {
+    const btn = document.getElementById('link-wa-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span> Opening…';
+    try {
+        const res = await fetch('/fees/notices/whatsapp-open');
+        const d   = await res.json();
+        if (d.status === 'opened') {
+            btn.innerHTML = '<span>🔗</span> Link WhatsApp';
+        } else {
+            showToast('❌ Could not open browser: ' + (d.detail || d.status));
+            btn.innerHTML = '<span>🔗</span> Link WhatsApp';
+        }
+    } catch (e) {
+        showToast('❌ Error: ' + e.message);
+        btn.innerHTML = '<span>🔗</span> Link WhatsApp';
+    }
+    btn.disabled = false;
+    pollWaStatus();
+}
+
+async function openAutoSend() {
+    // Fetch pending count first
+    const res = await fetch('/fees/notices/pending-all');
+    const rows = await res.json();
+    const total = rows.length;
+
+    document.getElementById('auto-setup-sub').textContent =
+        total > 0
+            ? `${total} student${total !== 1 ? 's' : ''} with pending notices`
+            : 'No pending notices found';
+
+    const estSec = total * 15;
+    const estMin = Math.ceil(estSec / 60);
+    document.getElementById('auto-est-time').textContent =
+        `~${estSec}–${total * 20} seconds total (≈ ${estMin} minute${estMin !== 1 ? 's' : ''}) for ${total} student${total !== 1 ? 's' : ''}`;
+
+    document.getElementById('auto-start-btn').disabled = total === 0;
+
+    // Show setup screen
+    document.getElementById('auto-setup').style.display = 'block';
+    document.getElementById('auto-progress').style.display = 'none';
+    document.getElementById('auto-done').style.display = 'none';
+    document.getElementById('auto-modal-backdrop').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function startAutoSend() {
+    _autoRunning = true;
+    document.getElementById('auto-setup').style.display = 'none';
+    document.getElementById('auto-progress').style.display = 'block';
+    document.getElementById('auto-done').style.display = 'none';
+
+    const logEl   = document.getElementById('auto-log');
+    const progBar = document.getElementById('auto-progress-bar');
+    const progLbl = document.getElementById('auto-progress-label');
+    const subLbl  = document.getElementById('auto-prog-sub');
+    const curCard = document.getElementById('auto-current-card');
+    const curName = document.getElementById('auto-cur-name');
+    const curStat = document.getElementById('auto-cur-status');
+    const curAv   = document.getElementById('auto-cur-avatar');
+
+    logEl.innerHTML = '';
+
+    function addLog(cls, icon, text) {
+        const div = document.createElement('div');
+        div.className = `auto-log-entry ${cls}`;
+        div.innerHTML = `<span>${icon}</span><span>${text}</span>`;
+        logEl.appendChild(div);
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    _autoSse = new EventSource('/fees/notices/send-bulk-stream');
+
+    _autoSse.onmessage = (e) => {
+        const d = JSON.parse(e.data);
+
+        if (d.type === 'wa_ready') {
+            subLbl.textContent = 'WhatsApp Web ready — starting sends…';
+            addLog('log-sent', '✅', 'WhatsApp Web is open and ready');
+        }
+
+        if (d.type === 'start') {
+            subLbl.textContent = `Sending to ${d.total} student${d.total !== 1 ? 's' : ''}…`;
+            progLbl.textContent = `0 / ${d.total}`;
+        }
+
+        if (d.type === 'sending') {
+            const pct = ((d.index - 1) / d.total) * 100;
+            progBar.style.width = pct + '%';
+            progLbl.textContent = `${d.index} / ${d.total}`;
+            subLbl.textContent = `Sending ${d.index} of ${d.total}…`;
+
+            curCard.style.display = 'flex';
+            curAv.textContent = (d.name[0] || '?').toUpperCase();
+            curName.textContent = d.name;
+            curStat.textContent = 'Opening WhatsApp Web and sending…';
+            addLog('log-sending', '📤', `Sending to ${d.name}…`);
+        }
+
+        if (d.type === 'sent') {
+            const pct = (d.index / d.total) * 100;
+            progBar.style.width = pct + '%';
+            progLbl.textContent = `${d.index} / ${d.total}`;
+            curStat.textContent = '✅ Sent!';
+            // Update last log entry
+            const entries = logEl.querySelectorAll('.log-sending');
+            if (entries.length) {
+                const last = entries[entries.length - 1];
+                last.className = 'auto-log-entry log-sent';
+                last.innerHTML = `<span>✅</span><span>Sent to ${d.name}</span>`;
+            }
+        }
+
+        if (d.type === 'skip') {
+            addLog('log-skip', '⚠️', `Skipped ${d.name} — ${d.reason || 'invalid number'}`);
+            const pct = (d.index / d.total) * 100;
+            progBar.style.width = pct + '%';
+            progLbl.textContent = `${d.index} / ${d.total}`;
+        }
+
+        if (d.type === 'error') {
+            addLog('log-error', '❌', `Failed: ${d.name} — ${d.error || 'unknown error'}`);
+            curStat.textContent = '❌ Error — continuing…';
+            const pct = (d.index / d.total) * 100;
+            progBar.style.width = pct + '%';
+        }
+
+        if (d.type === 'done') {
+            _autoSse.close();
+            _autoRunning = false;
+            progBar.style.width = '100%';
+            progLbl.textContent = `${d.total} / ${d.total}`;
+
+            document.getElementById('auto-progress').style.display = 'none';
+            document.getElementById('auto-done').style.display = 'block';
+            document.getElementById('auto-done-msg').textContent =
+                `✅ Sent ${d.sent} of ${d.total} notice${d.total !== 1 ? 's' : ''}`;
+            const skipped = d.total - d.sent - d.failed;
+            let sub = '';
+            if (d.failed) sub += `${d.failed} failed (check log)  `;
+            if (skipped > 0) sub += `${skipped} skipped (no valid number)`;
+            document.getElementById('auto-done-sub').textContent = sub || 'All messages delivered via WhatsApp!';
+        }
+    };
+
+    _autoSse.onerror = () => {
+        if (!_autoRunning) return;
+        _autoSse.close();
+        _autoRunning = false;
+        addLog('log-error', '❌', 'Connection error. Sending may have stopped.');
+    };
+}
+
+function closeAutoModal() {
+    if (_autoRunning) return; // don't allow closing mid-send
+    if (_autoSse) { _autoSse.close(); _autoSse = null; }
+    document.getElementById('auto-modal-backdrop').style.display = 'none';
+    document.body.style.overflow = '';
+}
+</script>
+{% endblock %}

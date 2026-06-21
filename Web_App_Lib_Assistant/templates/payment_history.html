@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section">
+    <div class="row-between">
+        <h2>📜 Payment History</h2>
+        <div class="row-between" style="gap:8px;">
+            <a class="btn secondary" href="/students/{{ student['id'] }}/profile">← Back to Profile</a>
+            <a class="btn secondary" href="/fees">← Back to Fees</a>
+        </div>
+    </div>
+
+    <div class="history-header">
+        <div class="history-student">
+            <strong>{{ student['full_name'] }}</strong> — Seat {{ student['seat_number'] }}
+        </div>
+    </div>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Amount (₹)</th>
+                <th>Payment Date</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>₹{{ '%.0f'|format(r['amount']|float) }}</td>
+                <td>{{ r['payment_date'] }}</td>
+                <td>{{ r['notes'] or '—' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" class="muted">No payments recorded</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

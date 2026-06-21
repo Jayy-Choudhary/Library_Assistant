@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section">
+    <div class="row-between">
+        <h2>{{ 'Edit Student' if student else 'Add Student' }}</h2>
+        <a class="btn secondary" href="/students">Back</a>
+    </div>
+
+    {% if error %}
+    <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <form class="form" method="post" enctype="multipart/form-data">
+        {% if student %}
+        <input type="hidden" name="_method" value="edit" />
+        {% endif %}
+
+        <div class="grid2">
+            <label>
+                Seat
+                <input name="seat" value="{{ student['seat_number'] if student else '' }}" required />
+            </label>
+            <label>
+                Shift Type
+                <select name="shift_type">
+                    {% for val in ['FULL_DAY','HALF_DAY_DAY','HALF_DAY_NIGHT'] %}
+                    <option value="{{ val }}" {% if student and student['shift_type']==val %}selected{% endif %}>{{ val
+                        }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </div>
+
+        <label>
+            Full Name
+            <input name="name" value="{{ student['full_name'] if student else '' }}" required />
+        </label>
+
+        <label>
+            Mobile Number
+            <input name="mobile" value="{{ student['mobile_number'] if student else '' }}" required />
+        </label>
+
+        <label>
+            Admission Date
+            <input type="date" name="admission" value="{{ student['admission_date'] if student else '' }}" required />
+        </label>
+
+        <label>
+            Monthly Fee (₹)
+            <input type="number" step="0.01" name="monthly_fee" value="{{ fee['monthly_fee'] if fee else 0 }}" />
+        </label>
+
+        <div class="grid2">
+            <label>
+                Student Photo (optional)
+                <input type="file" name="photo" accept="image/*" />
+            </label>
+            <label>
+                Remove Photo
+                <select name="remove_photo">
+                    <option value="off" selected>Keep</option>
+                    <option value="on">Remove</option>
+                </select>
+            </label>
+        </div>
+
+        <div class="row-between" style="margin-top:14px;">
+            <button class="btn" type="submit">Save</button>
+            <div class="muted">Photos are stored in /student_photos</div>
+        </div>
+    </form>
+
+    {% if student %}
+    <hr class="hr" />
+    <h3>Mark Old Student</h3>
+    <form method="post" action="/students/{{ student['id'] }}/mark-old" class="form">
+        <label>
+            Exit Date
+            <input type="date" name="exit_date" required />
+        </label>
+        <button class="btn danger" type="submit">Mark Old</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

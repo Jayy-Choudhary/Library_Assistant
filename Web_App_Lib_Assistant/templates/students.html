@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section">
+    <div class="row-between">
+        <h2>🎓 Students</h2>
+        <a class="btn" href="/students/add">+ Add Student</a>
+    </div>
+
+    <form method="get" class="filters">
+        <div class="filter-group">
+            <label>Search</label>
+            <input id="search-input" name="q" value="{{ q or '' }}" placeholder="Name / Mobile / Seat" autocomplete="off" />
+        </div>
+        <div class="filter-group">
+            <label>Status</label>
+            <select id="status-filter" name="status_filter">
+                {% for val in ['Active','Old Student','All'] %}
+                <option value="{{ val }}" {% if status_filter==val %}selected{% endif %}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="btn" type="submit">Apply</button>
+    </form>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Seat</th>
+                <th>Full Name</th>
+                <th>Admission Date</th>
+                <th>Exit Date</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr class="student-row t-{{ 'old' if r['status']=='Old Student' else 'active' }}" data-search-terms="{{ r['seat_number'] }} {{ r['full_name'] }} {{ r['mobile_number'] }}" data-status="{{ r['status'] }}">
+                <td>{{ r['seat_number'] }}</td>
+                <td>
+                    <div class="name-cell">
+                        <a class="link" href="/students/{{ r['id'] }}/profile">{{ r['full_name'] }}</a>
+                    </div>
+                </td>
+                <td>{{ r['admission_date'] }}</td>
+                <td>{{ r['exit_date'] or '-' }}</td>
+                <td class="right">
+                    <div class="btn-group">
+                        <a class="link" href="/students/{{ r['id'] }}/profile" title="View Profile">👤</a>
+                        <a class="link" href="/students/{{ r['id'] }}/edit" title="Edit">✏️</a>
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="muted">No students found</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const searchInput = document.getElementById('search-input');
+        const statusFilter = document.getElementById('status-filter');
+        const rows = document.querySelectorAll('.student-row');
+
+        function filterTable() {
+            const query = searchInput.value.toLowerCase().trim();
+            const selectedStatus = statusFilter.value; // 'Active', 'Old Student', 'All'
+
+            rows.forEach(row => {
+                const searchTerms = row.getAttribute('data-search-terms').toLowerCase();
+                const studentStatus = row.getAttribute('data-status'); // 'Active' or 'Old Student'
+
+                const matchesQuery = !query || searchTerms.includes(query);
+                let matchesStatus = false;
+
+                if (selectedStatus === 'All') {
+                    matchesStatus = true;
+                } else if (selectedStatus === 'Active' && studentStatus === 'Active') {
+                    matchesStatus = true;
+                } else if (selectedStatus === 'Old Student' && studentStatus === 'Old Student') {
+                    matchesStatus = true;
+                }
+
+                if (matchesQuery && matchesStatus) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        searchInput.addEventListener('input', filterTable);
+        statusFilter.addEventListener('change', filterTable);
+    });
+</script>
+{% endblock %}

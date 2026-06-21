@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section">
+    <div class="row-between">
+        <h2>Seat Management</h2>
+        <button class="btn" id="open-add-seats-btn" style="background: rgba(14, 165, 233, 0.16); border-color: rgba(14, 165, 233, 0.35);">+ Add Seats</button>
+    </div>
+
+    <form method="get" class="filters" style="margin-top:10px;">
+        <div class="filter-group">
+            <label>Room</label>
+            <select name="room_filter">
+                {% for val in ['All','A','B','C'] %}
+                <option value="{{ val }}" {% if room_filter==val %}selected{% endif %}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="btn" type="submit">Apply</button>
+    </form>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Seat Number</th>
+                <th>Room</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr class="t-{{ r.tag }}">
+                <td>{{ r.seat_number }}</td>
+                <td>{{ r.room }}</td>
+                <td>{{ r.display_status }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="3" class="muted">No seats found</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Add Seats Modal -->
+<div class="modal-backdrop" id="add-seats-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">💺 Add Seats in Bulk</h3>
+            <button class="modal-close" onclick="toggleModal('add-seats-modal', false)">&times;</button>
+        </div>
+        <form method="post" action="/seats/add">
+            <div class="modal-body">
+                <div class="form">
+                    <label>
+                        Room
+                        <select name="room">
+                            <option value="A">Room A</option>
+                            <option value="B">Room B</option>
+                            <option value="C">Room C</option>
+                        </select>
+                    </label>
+                    <label>
+                        Seat Prefix
+                        <input type="text" name="prefix" value="A" required placeholder="e.g. A" />
+                    </label>
+                    <label>
+                        Start Index
+                        <input type="number" name="start" value="1" required min="0" />
+                    </label>
+                    <label>
+                        End Index
+                        <input type="number" name="end" value="20" required min="1" />
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn secondary" onclick="toggleModal('add-seats-modal', false)">Cancel</button>
+                <button type="submit" class="btn">Add Seats</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function toggleModal(modalId, show) {
+        const modal = document.getElementById(modalId);
+        if (show) {
+            modal.classList.add('show');
+        } else {
+            modal.classList.remove('show');
+        }
+    }
+
+    document.getElementById('open-add-seats-btn').addEventListener('click', () => {
+        const currentFilter = "{{ room_filter }}";
+        const roomSelect = document.querySelector('#add-seats-modal select[name="room"]');
+        const prefixInput = document.querySelector('#add-seats-modal input[name="prefix"]');
+        if (['A', 'B', 'C'].includes(currentFilter)) {
+            roomSelect.value = currentFilter;
+            prefixInput.value = currentFilter;
+        }
+        toggleModal('add-seats-modal', true);
+    });
+
+    window.addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal-backdrop')) {
+            e.target.classList.remove('show');
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section">
+    <div class="row-between">
+        <h2>✏️ Update Fee</h2>
+        <a class="btn secondary" href="/fees">← Back to Fees</a>
+    </div>
+
+    <div class="pay-header">
+        <div class="pay-student-info">
+            <strong>{{ student['full_name'] }}</strong> — Seat {{ student['seat_number'] }}
+        </div>
+    </div>
+
+    <form method="post" action="/fees/{{ student['id'] }}/update" class="form" style="max-width:450px;">
+        <label>
+            Monthly Fee (₹)
+            <input type="number" step="1" name="monthly_fee" value="{{ '%.0f'|format(fee['monthly_fee']|float) if fee else '0' }}" required />
+        </label>
+
+        <label>
+            Current Due (₹)
+            <input type="number" step="1" name="due_amount" value="{{ '%.0f'|format(fee['due_amount']|float) if fee else '0' }}" required />
+        </label>
+
+        <div class="muted" style="margin-top:8px;">
+            You can also manually adjust the due amount here.
+        </div>
+
+        <button class="btn" type="submit">💾 Save Changes</button>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section">
+    <div class="row-between">
+        <h2>👤 Student Profile</h2>
+        <div class="row-between" style="gap:8px;">
+            <a class="btn secondary" href="/students">← Back to Students</a>
+            <a class="btn" href="/students/{{ student['id'] }}/edit">✏️ Edit</a>
+        </div>
+    </div>
+
+    <div class="profile-layout">
+        <div class="profile-photo">
+            {% set photo_path = student['photo_path'] %}
+            {% if photo_path and photo_path|length > 0 %}
+                {% set photo_rel = photo_path.replace('\\', '/').split('student_photos/')[-1] %}
+                <img src="/student_photos/{{ photo_rel }}" alt="Student Photo" class="photo-img" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
+                <div class="photo-placeholder" style="display:none;">
+                    <span>No Image</span>
+                </div>
+            {% else %}
+                <div class="photo-placeholder">
+                    <span>No Image</span>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="profile-details">
+            <table class="detail-table">
+                <tr>
+                    <td class="detail-label">Full Name</td>
+                    <td class="detail-value">{{ student['full_name'] }}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Seat Number</td>
+                    <td class="detail-value">{{ student['seat_number'] }}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Mobile Number</td>
+                    <td class="detail-value">{{ student['mobile_number'] }}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Shift Type</td>
+                    <td class="detail-value">
+                        {% set shift_map = {'FULL_DAY': 'Full Day', 'HALF_DAY_DAY': 'Half Day (Day)', 'HALF_DAY_NIGHT': 'Half Day (Night)'} %}
+                        {{ shift_map.get(student['shift_type'], student['shift_type']) }}
+                    </td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Admission Date</td>
+                    <td class="detail-value">{{ student['admission_date'] }}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Exit Date</td>
+                    <td class="detail-value">{{ student['exit_date'] or '—' }}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Status</td>
+                    <td class="detail-value"><span class="status-badge status-{{ student['status']|lower|replace(' ', '_') }}">{{ student['status'] }}</span></td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Monthly Fee</td>
+                    <td class="detail-value">₹{{ '%.0f'|format(fee['monthly_fee']|float) if fee else '—' }}</td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Current Due</td>
+                    <td class="detail-value {% if fee and fee['due_amount']|float > 0 %}text-danger{% endif %}">
+                        ₹{{ '%.0f'|format(fee['due_amount']|float) if fee else '—' }}
+                    </td>
+                </tr>
+                <tr>
+                    <td class="detail-label">Next Due Date</td>
+                    <td class="detail-value">{{ fee['due_date'] or '—' }}</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <hr class="hr" />
+    <div class="row-between">
+        <div>
+            <a class="btn" href="/fees/{{ student['id'] }}/pay">💳 Record Payment</a>
+            <a class="btn secondary" href="/fees/{{ student['id'] }}/history" style="margin-left:8px;">📜 Payment History</a>
+        </div>
+    </div>
+
+    {% if student['status'] == 'Active' %}
+    <hr class="hr" />
+    <h3>Mark Old Student</h3>
+    <form method="post" action="/students/{{ student['id'] }}/mark-old" class="form" style="max-width:400px;">
+        <label>
+            Exit Date
+            <input type="date" name="exit_date" required />
+        </label>
+        <button class="btn danger" type="submit">Mark Old</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

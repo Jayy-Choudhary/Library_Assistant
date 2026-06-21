@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="cards">
+    <div class="card c-accent">
+        <div class="card-title">Total Seats</div>
+        <div class="card-value">{{ total }}</div>
+    </div>
+    <div class="card c-accent2">
+        <div class="card-title">Occupied</div>
+        <div class="card-value">{{ occ }}</div>
+    </div>
+    <div class="card c-success">
+        <div class="card-title">Available</div>
+        <div class="card-value">{{ avail }}</div>
+    </div>
+    <div class="card c-blue">
+        <div class="card-title">Active Students</div>
+        <div class="card-value">{{ active }}</div>
+    </div>
+
+    <div class="card c-warning">
+        <div class="card-title">Pending Notices</div>
+        <div class="card-value">{{ pending_notices }}</div>
+    </div>
+    <div class="card c-reminder">
+        <div class="card-title">Reminder Due</div>
+        <div class="card-value">{{ reminder_due }}</div>
+    </div>
+    <div class="card c-due">
+        <div class="card-title">Due</div>
+        <div class="card-value">{{ due_notices }}</div>
+    </div>
+    <div class="card c-overdue">
+        <div class="card-title">Overdue</div>
+        <div class="card-value">{{ overdue_notices }}</div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Fee Due Students</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Seat No.</th>
+                <th>Student Name</th>
+                <th>Due Amount (₹)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in due_rows %}
+            <tr>
+                <td>{{ r['seat_number'] }}</td>
+                <td>{{ r['full_name'] }}</td>
+                <td>{{ '₹' ~ (r['due_amount']|float|round|int) }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="3" class="muted">No due students</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

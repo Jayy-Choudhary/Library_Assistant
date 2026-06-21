@@ -1,0 +1,752 @@
+:root {
+    --bg: #0B1220;
+    --sidebar: #0F172A;
+    --card: #111827;
+    --text: #E5E7EB;
+    --muted: #94A3B8;
+    --accent: #0EA5E9;
+    --accent2: #22C55E;
+    --success: #22C55E;
+    --danger: #EF4444;
+    --warning: #F59E0B;
+    --reminder: #CA8A04;
+    --due-color: #EA580C;
+    --overdue-color: #EF4444;
+    --paid-color: #22C55E;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.app-shell {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 240px;
+    background: var(--sidebar);
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 6px;
+}
+
+.logo-text {
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.nav {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.nav-link {
+    color: var(--muted);
+    text-decoration: none;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: transparent;
+    border: 1px solid transparent;
+}
+
+.nav-link:hover {
+    color: var(--text);
+    border-color: rgba(255, 255, 255, .08);
+    background: rgba(255, 255, 255, .03);
+}
+
+.footer {
+    margin-top: auto;
+    color: var(--muted);
+    font-size: 13px;
+    padding: 6px;
+}
+
+.main {
+    flex: 1;
+    padding: 22px;
+}
+
+.topbar {
+    margin-bottom: 16px;
+}
+
+.page-title {
+    margin: 0;
+    font-size: 22px;
+}
+
+.subtitle {
+    color: var(--muted);
+    margin-top: 6px;
+}
+
+.content {
+    max-width: 1200px;
+}
+
+.section {
+    background: rgba(255, 255, 255, .02);
+    border: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 16px;
+    padding: 18px;
+}
+
+.cards {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+@media(max-width:1000px) {
+    .cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media(max-width:640px) {
+    .cards {
+        grid-template-columns: 1fr;
+    }
+}
+
+.card {
+    background: var(--card);
+    border: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 14px;
+    padding: 14px;
+}
+
+.card-title {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.card-value {
+    font-size: 30px;
+    font-weight: 800;
+    margin-top: 6px;
+}
+
+.c-accent {
+    box-shadow: inset 0 0 0 1px rgba(14, 165, 233, .25);
+}
+
+.c-accent2 {
+    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, .25);
+}
+
+.c-success {
+    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, .25);
+}
+
+.c-blue {
+    box-shadow: inset 0 0 0 1px rgba(37, 99, 235, .25);
+}
+
+.c-warning {
+    box-shadow: inset 0 0 0 1px rgba(245, 158, 11, .25);
+}
+
+.c-reminder {
+    box-shadow: inset 0 0 0 1px rgba(202, 138, 4, .25);
+}
+
+.c-due {
+    box-shadow: inset 0 0 0 1px rgba(234, 88, 12, .25);
+}
+
+.c-overdue {
+    box-shadow: inset 0 0 0 1px rgba(239, 68, 68, .25);
+}
+
+.row-between {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+}
+
+.table th,
+.table td {
+    text-align: left;
+    padding: 10px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+
+.table thead th {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.right {
+    text-align: right;
+}
+
+.muted {
+    color: var(--muted);
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    background: rgba(14, 165, 233, .16);
+    color: var(--text);
+    text-decoration: none;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn:hover {
+    background: rgba(14, 165, 233, .25);
+}
+
+.btn.secondary {
+    background: transparent;
+}
+
+.btn.danger {
+    background: rgba(239, 68, 68, .15);
+    border-color: rgba(239, 68, 68, .3);
+}
+
+.btn.small {
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+.link {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.link:hover {
+    text-decoration: underline;
+}
+
+.filters {
+    display: flex;
+    align-items: flex-end;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.form label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+input,
+select {
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    background: #0B1220;
+    color: var(--text);
+    font-size: 14px;
+}
+
+input[type="file"] {
+    padding: 0;
+    border: none;
+}
+
+.grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+@media(max-width:720px) {
+    .grid2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+.alert {
+    background: rgba(239, 68, 68, .15);
+    border: 1px solid rgba(239, 68, 68, .35);
+    padding: 12px;
+    border-radius: 14px;
+    margin-bottom: 12px;
+}
+
+.hr {
+    height: 1px;
+    background: rgba(255, 255, 255, .08);
+    border: none;
+    margin: 16px 0;
+}
+
+/* ── Status Badges ────────────────────────── */
+
+.status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-paid {
+    background: rgba(34, 197, 94, .2);
+    color: var(--paid-color);
+}
+
+.status-reminder_due {
+    background: rgba(202, 138, 4, .2);
+    color: var(--reminder);
+}
+
+.status-due {
+    background: rgba(234, 88, 12, .2);
+    color: var(--due-color);
+}
+
+.status-overdue {
+    background: rgba(239, 68, 68, .2);
+    color: var(--overdue-color);
+}
+
+.status-pending {
+    background: rgba(245, 158, 11, .2);
+    color: var(--warning);
+}
+
+.status-cancelled {
+    background: rgba(107, 114, 128, .2);
+    color: var(--muted);
+}
+
+.status-active {
+    background: rgba(34, 197, 94, .15);
+    color: var(--success);
+}
+
+.status-old_student {
+    background: rgba(107, 114, 128, .15);
+    color: var(--muted);
+}
+
+/* ── Row colors by status ─────────────────── */
+
+tr.t-paid td,
+tr.t-paid td .status-badge {
+    opacity: .75;
+}
+
+tr.t-reminder_due td {
+    color: var(--reminder);
+}
+
+tr.t-due td {
+    color: var(--due-color);
+}
+
+tr.t-overdue td {
+    color: var(--overdue-color);
+}
+
+tr.t-cancelled td {
+    color: var(--muted);
+    font-style: italic;
+}
+
+tr.t-old td {
+    color: var(--muted);
+}
+
+tr.t-pending td {
+    color: var(--warning);
+}
+
+/* ── Seat status row colors ───────────────── */
+
+tr.t-avail td:last-child {
+    color: var(--success);
+}
+
+tr.t-occ td:last-child {
+    color: var(--danger);
+}
+
+tr.t-half_day td:last-child,
+tr.t-half_night td:last-child {
+    color: #9CA3AF;
+}
+
+tr.t-doubly td:last-child {
+    color: #2563EB;
+}
+
+/* ── Text utilities ───────────────────────── */
+
+.text-danger {
+    color: var(--danger);
+    font-weight: 700;
+}
+
+.text-success {
+    color: var(--success);
+}
+
+/* ── Badge (top bar counter) ──────────────── */
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.badge-warning {
+    background: rgba(245, 158, 11, .2);
+    color: var(--warning);
+}
+
+/* ── Button group ─────────────────────────── */
+
+.btn-group {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.btn-group .link {
+    font-size: 16px;
+    padding: 2px 4px;
+}
+
+/* ── Profile page ─────────────────────────── */
+
+.profile-layout {
+    display: flex;
+    gap: 28px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.profile-photo {
+    width: 240px;
+    height: 240px;
+    border-radius: 16px;
+    overflow: hidden;
+    background: #0B1220;
+    border: 1px solid rgba(255, 255, 255, .08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.photo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.photo-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6B7280;
+    font-size: 14px;
+}
+
+.profile-details {
+    flex: 1;
+    min-width: 320px;
+}
+
+.detail-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.detail-table tr td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, .04);
+}
+
+.detail-label {
+    color: var(--muted);
+    font-size: 13px;
+    width: 160px;
+    vertical-align: top;
+}
+
+.detail-value {
+    color: var(--text);
+    font-size: 14px;
+}
+
+/* ── Payment / Update Header ──────────────── */
+
+.pay-header {
+    background: rgba(255, 255, 255, .03);
+    border: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.pay-student-info {
+    font-size: 16px;
+}
+
+.pay-due-info {
+    font-size: 15px;
+    color: var(--muted);
+}
+
+.history-header {
+    margin-top: 12px;
+    padding: 10px 0;
+}
+
+.history-student {
+    font-size: 16px;
+}
+
+/* ── Rooms grid ───────────────────────────── */
+
+.rooms-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(320px, 1fr));
+    gap: 14px;
+}
+
+@media(max-width:1050px) {
+    .rooms-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.room-card {
+    background: var(--card);
+    border: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 16px;
+    padding: 14px;
+}
+
+.room-header {
+    font-weight: 800;
+}
+
+.room-sub {
+    color: var(--muted);
+    margin-top: 6px;
+    margin-bottom: 10px;
+}
+
+.seat-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--cols), 1fr);
+    gap: var(--gap);
+}
+
+.seat {
+    color: #fff;
+    border-radius: 12px;
+    padding: 10px 6px;
+    text-align: center;
+    font-weight: 700;
+    border: 1px solid rgba(255, 255, 255, .10);
+}
+
+/* ── Students table profile link ──────────── */
+
+.name-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.name-cell .link {
+    font-weight: 600;
+}
+
+/* ── Modals & Popups ──────────────────────── */
+
+.modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(11, 18, 32, 0.85);
+    backdrop-filter: blur(8px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.modal-backdrop.show {
+    display: flex;
+}
+
+.modal-content {
+    background: var(--card);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 18px;
+    width: 90%;
+    max-width: 480px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    animation: modal-fade-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modal-fade-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.modal-header {
+    background: rgba(14, 165, 233, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #FFF;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 24px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    transition: color 0.15s ease;
+}
+
+.modal-close:hover {
+    color: #FFF;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 14px 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    background: rgba(15, 23, 42, 0.3);
+}
+
+/* ── Interactive Seat Buttons ──────────────── */
+.seat-grid .seat {
+    cursor: pointer;
+    transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.seat-grid .seat:hover {
+    transform: scale(1.06);
+    filter: brightness(1.15);
+}
+
+/* ── Dynamic Seat Detail Card ──────────────── */
+.seat-student-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+}
+
+.seat-student-card:last-child {
+    margin-bottom: 0;
+}
+
+.seat-student-name {
+    font-weight: 700;
+    font-size: 15px;
+    color: #FFF;
+    margin-bottom: 6px;
+}
+
+.seat-student-detail {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+.seat-student-detail:last-child {
+    margin-bottom: 0;
+}
+

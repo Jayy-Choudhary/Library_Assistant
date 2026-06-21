@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section">
+    <div class="row-between">
+        <h2>Rooms</h2>
+        <div class="btn-group" style="gap: 10px; display: flex; align-items: center;">
+            <form method="get" class="filters" style="margin:0; display: flex; align-items: center; gap: 8px;">
+                <label style="margin-right: 4px;">Room</label>
+                <select name="room_filter">
+                    {% for val in ['ALL','A','B','C'] %}
+                    <option value="{{ val }}" {% if room_filter==val %}selected{% endif %}>{{ val }}</option>
+                    {% endfor %}
+                </select>
+                <button class="btn" type="submit">Apply</button>
+            </form>
+            <button class="btn" id="open-layout-btn" style="background: rgba(34, 197, 94, 0.16); border-color: rgba(34, 197, 94, 0.35);">🛠️ Configure Layout</button>
+        </div>
+    </div>
+
+    <div class="rooms-grid">
+        {% for room in all_tiles %}
+        <div class="room-card">
+            <div class="room-header">🏢 Room {{ room.room }}</div>
+            <div class="room-sub">{{ room.tiles|length }} Seats</div>
+
+            <div class="seat-grid" style="--cols: {{ room.columns }}; --gap: {{ room.seat_spacing }}px;">
+                {% for t in room.tiles %}
+                <div class="seat" style="background: {{ t.color }}"
+                    data-seat="{{ t.seat_number }}"
+                    data-details='{{ t.details|tojson }}'
+                    title="{% for n in t.names %}{{ n }}{% if not loop.last %}&#10;{% endif %}{% endfor %}">
+                    {{ t.seat_number }}
+                </div>
+                {% else %}
+                <div class="muted">No seats</div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Layout Config Modal -->
+<div class="modal-backdrop" id="layout-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">🛠️ Room Layout Config</h3>
+            <button class="modal-close" onclick="toggleModal('layout-modal', false)">&times;</button>
+        </div>
+        <form method="post" action="/rooms/layout">
+            <div class="modal-body">
+                <div class="form">
+                    <label>
+                        Room
+                        <select name="room">
+                            <option value="A">Room A</option>
+                            <option value="B">Room B</option>
+                            <option value="C">Room C</option>
+                        </select>
+                    </label>
+                    <label>
+                        Columns
+                        <input type="number" name="columns" min="1" max="30" value="5" required />
+                    </label>
+                    <label>
+                        Rows (visual reference)
+                        <input type="number" name="rows" min="1" max="30" value="5" required />
+                    </label>
+                    <label>
+                        Seat Spacing (px)
+                        <input type="number" name="seat_spacing" min="0" max="100" value="8" required />
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn secondary" onclick="toggleModal('layout-modal', false)">Cancel</button>
+                <button type="submit" class="btn">Save Layout</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Seat Details Modal -->
+<div class="modal-backdrop" id="details-modal">
+    <div class="modal-content">
+        <div class="modal-header" style="background: var(--accent);">
+            <h3 class="modal-title" id="details-title">💺 Seat Details</h3>
+            <button class="modal-close" onclick="toggleModal('details-modal', false)">&times;</button>
+        </div>
+        <div class="modal-body" id="details-body">
+            <!-- Student details will be inserted here dynamically -->
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn secondary" onclick="toggleModal('details-modal', false)">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function toggleModal(modalId, show) {
+        const modal = document.getElementById(modalId);
+        if (show) {
+            modal.classList.add('show');
+        } else {
+            modal.classList.remove('show');
+        }
+    }
+
+    document.getElementById('open-layout-btn').addEventListener('click', () => {
+        const currentFilter = "{{ room_filter }}";
+        const roomSelect = document.querySelector('#layout-modal select[name="room"]');
+        if (['A', 'B', 'C'].includes(currentFilter)) {
+            roomSelect.value = currentFilter;
+        }
+        toggleModal('layout-modal', true);
+    });
+
+    window.addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal-backdrop')) {
+            e.target.classList.remove('show');
+        }
+    });
+
+    document.querySelectorAll('.seat-grid .seat').forEach(seat => {
+        seat.addEventListener('click', () => {
+            const seatNumber = seat.getAttribute('data-seat');
+            const detailsStr = seat.getAttribute('data-details');
+            if (!detailsStr) return;
+
+            let details = [];
+            try {
+                details = JSON.parse(detailsStr);
+            } catch (e) {
+                console.error("Error parsing seat details", e);
+            }
+
+            const titleEl = document.getElementById('details-title');
+            titleEl.textContent = `💺 Seat ${seatNumber} Details`;
+
+            const bodyEl = document.getElementById('details-body');
+            bodyEl.innerHTML = '';
+
+            if (details.length === 0) {
+                bodyEl.innerHTML = `<div class="muted" style="text-align: center; padding: 20px 0;">No active students on this seat.</div>`;
+            } else {
+                details.forEach(student => {
+                    const card = document.createElement('div');
+                    card.className = 'seat-student-card';
+                    card.innerHTML = `
+                        <div class="seat-student-name">• ${student.full_name}</div>
+                        <div class="seat-student-detail"><strong>Shift:</strong> ${student.shift}</div>
+                        <div class="seat-student-detail"><strong>Mobile:</strong> ${student.mobile_number}</div>
+                        <div class="seat-student-detail"><strong>Fee Due:</strong> ₹${student.due_amount.toFixed(0)}</div>
+                    `;
+                    bodyEl.appendChild(card);
+                });
+            }
+
+            toggleModal('details-modal', true);
+        });
+    });
+</script>
+{% endblock %}

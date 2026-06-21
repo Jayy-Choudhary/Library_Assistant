@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title or "Library Assistant" }}</title>
+    <link rel="stylesheet" href="/app.css" />
+</head>
+
+<body>
+    <div class="app-shell">
+
+        <aside class="sidebar">
+            <div class="logo">📚<div class="logo-text">Library<br />Assistant</div>
+            </div>
+
+            <nav class="nav">
+                <a class="nav-link" href="/dashboard">🏠 Dashboard</a>
+                <a class="nav-link" href="/students">🎓 Students</a>
+                <a class="nav-link" href="/seats">💺 Seats</a>
+                <a class="nav-link" href="/fees">💰 Fees</a>
+                <a class="nav-link" href="/rooms">🏢 Rooms</a>
+            </nav>
+
+            <div class="footer">v1.0 • SQLite</div>
+        </aside>
+
+        <main class="main">
+            <header class="topbar">
+                <h1 class="page-title">{{ page_title or "" }}</h1>
+                {% if subtitle %}<div class="subtitle">{{ subtitle }}</div>{% endif %}
+            </header>
+
+            <div class="content">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+</body>
+
+</html>

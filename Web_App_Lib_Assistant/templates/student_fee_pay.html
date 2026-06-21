@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section">
+    <div class="row-between">
+        <h2>💳 Record Payment</h2>
+        <a class="btn secondary" href="/fees">← Back to Fees</a>
+    </div>
+
+    <div class="pay-header">
+        <div class="pay-student-info">
+            <strong>{{ student['full_name'] }}</strong> — Seat {{ student['seat_number'] }}
+        </div>
+        <div class="pay-due-info">
+            Current Due: <span class="text-danger">₹{{ '%.0f'|format(fee['due_amount']|float) if fee else '0' }}</span>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/fees/{{ student['id'] }}/pay" class="form" style="max-width:450px;">
+        <label>
+            Amount Paid (₹)
+            <input type="number" step="1" name="amount" value="{{ '%.0f'|format(fee['due_amount']|float) if fee else '0' }}" required />
+        </label>
+
+        <label>
+            Payment Date (YYYY-MM-DD)
+            <input type="date" name="payment_date" value="{{ student['admission_date'] if student['admission_date'] else '' }}" required />
+        </label>
+
+        <label>
+            Notes (optional)
+            <input type="text" name="notes" placeholder="e.g. Cash / UPI" />
+        </label>
+
+        <button class="btn" type="submit">💳 Record Payment</button>
+    </form>
+</div>
+{% endblock %}

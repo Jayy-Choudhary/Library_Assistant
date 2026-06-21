@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section">
+    <div class="row-between">
+        <h2>💰 Fee Management</h2>
+        <div class="row-between" style="gap:8px;">
+            <span class="badge badge-warning" id="notice-count">{{ pending_notices }} pending</span>
+            <a class="btn" href="/fees/notices">📢 Fee Notices</a>
+            <a class="btn secondary" href="/fees/export" style="color: var(--success);">📤 Export CSV</a>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert">{{ error }}</div>
+    {% endif %}
+
+    <form method="get" class="filters" style="margin-top:10px;">
+        <div class="filter-group">
+            <label>Filter</label>
+            <select name="filter">
+                {% for val in ['All', 'Due Only'] %}
+                <option value="{{ val }}" {% if filter==val %}selected{% endif %}>{{ val }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="btn" type="submit">Apply</button>
+    </form>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Seat No.</th>
+                <th>Student Name</th>
+                <th>Monthly Fee</th>
+                <th>Due Amount</th>
+                <th>Next Due Date</th>
+                <th>Notice Date</th>
+                <th>Status</th>
+                <th>Last Payment</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr class="t-{{ r.status|lower|replace(' ', '_') }}">
+                <td>{{ r.seat_number }}</td>
+                <td>{{ r.full_name }}</td>
+                <td>{{ r.monthly_fee }}</td>
+                <td class="{% if r.due_amount_raw > 0 %}text-danger{% endif %}">{{ r.due_amount }}</td>
+                <td>{{ r.next_due_date }}</td>
+                <td>{{ r.notice_date }}</td>
+                <td><span class="status-badge status-{{ r.status|lower|replace(' ', '_') }}">{{ r.status }}</span></td>
+                <td>{{ r.last_payment_date }}</td>
+                <td class="right">
+                    <div class="btn-group">
+                        <a class="link" href="/fees/{{ r.student_id }}/pay" title="Record Payment">💳</a>
+                        <a class="link" href="/fees/{{ r.student_id }}/update" title="Update Fee">✏️</a>
+                        <a class="link" href="/fees/{{ r.student_id }}/history" title="Payment History">📜</a>
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="9" class="muted">No fee records found</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
