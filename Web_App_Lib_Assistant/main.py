@@ -14,7 +14,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from database.database import Database
-from config.paths import DB_PATH, STUDENT_PHOTOS_DIR
+from config.paths import DB_PATH, STUDENT_PHOTOS_DIR, API_KEY
 from student_photo_utils import (
     ensure_dir,
     make_photo_filenames,
@@ -805,6 +805,52 @@ def fee_notice_mark_sent(notice_id: int):
     from fastapi.responses import JSONResponse
     db.mark_notice_sent(notice_id)
     return JSONResponse({"status": "success"})
+
+
+@app.post("/api/db/call")
+async def db_call(request: Request):
+    """Secure endpoint for desktop/remote clients to run database methods."""
+    from fastapi.responses import JSONResponse
+    
+    # 1. Authorize using headers
+    client_key = request.headers.get("X-API-Key")
+    if client_key != API_KEY:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+        
+    method_name = body.get("method")
+    args = body.get("args", [])
+    kwargs = body.get("kwargs", {})
+    
+    if not method_name or method_name.startswith("_"):
+        return JSONResponse({"error": "Invalid method name"}, status_code=400)
+        
+    method = getattr(db, method_name, None)
+    if not method:
+        return JSONResponse({"error": f"Method {method_name} not found"}, status_code=404)
+        
+    try:
+        # Run method locally
+        result = method(*args, **kwargs)
+        
+        # Serialize result (resolves sqlite3.Row and tuple types)
+        def serialize_item(val):
+            import sqlite3
+            if isinstance(val, list):
+                return [serialize_item(x) for x in val]
+            if isinstance(val, sqlite3.Row):
+                return dict(val)
+            if isinstance(val, tuple):
+                return [serialize_item(x) for x in val]
+            return val
+            
+        return JSONResponse({"result": serialize_item(result)})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/fees/export")

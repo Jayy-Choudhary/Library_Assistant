@@ -4,12 +4,18 @@ from datetime import datetime, timedelta, date
 from pathlib import Path
 from typing import Optional
 
-from config.paths import DB_PATH
+from config.paths import DB_PATH, REMOTE_URL, API_KEY
 
 GRACE_PERIOD_DAYS = 3
 
 
 class Database:
+    def __new__(cls, db_path=None):
+        if REMOTE_URL:
+            return RemoteDatabaseProxy(REMOTE_URL, API_KEY)
+        instance = super().__new__(cls)
+        return instance
+
     def __init__(self, db_path=None):
         self.db_path = str(db_path or DB_PATH)
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -1262,3 +1268,63 @@ class Database:
             WHERE status='Pending'
             ORDER BY notice_date ASC
             """).fetchall()
+
+    def execute_raw_sql(self, sql, params=None):
+        """Execute a raw SQL query and return rows. Used by remote client proxies."""
+        cur = self.conn.cursor()
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
+        return cur.fetchall()
+
+
+# ── Remote Database Proxy Classes ─────────────────────────────────────────────
+
+class RemoteDatabaseProxy:
+    def __init__(self, base_url, api_key):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.conn = RemoteConnectionProxy(self)
+
+    def execute_raw_sql(self, sql, params=None):
+        return self._make_call("execute_raw_sql", sql, params)
+
+    def _make_call(self, name, *args, **kwargs):
+        import requests
+        headers = {"X-API-Key": self.api_key}
+        payload = {"method": name, "args": args, "kwargs": kwargs}
+        try:
+            res = requests.post(f"{self.base_url}/api/db/call", json=payload, headers=headers, timeout=25)
+            if res.status_code != 200:
+                raise Exception(f"Server returned status {res.status_code}: {res.text}")
+            data = res.json()
+            if "error" in data:
+                raise Exception(data["error"])
+            return data["result"]
+        except Exception as e:
+            raise Exception(f"Database API call to {self.base_url} failed: {e}")
+
+    def __getattr__(self, name):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        def method(*args, **kwargs):
+            return self._make_call(name, *args, **kwargs)
+        return method
+
+
+class RemoteConnectionProxy:
+    def __init__(self, proxy):
+        self.proxy = proxy
+
+    def execute(self, sql, params=None):
+        rows = self.proxy.execute_raw_sql(sql, params)
+        return RemoteCursorProxy(rows)
+
+
+class RemoteCursorProxy:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def fetchall(self):
+        return self.rows

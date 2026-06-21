@@ -24,10 +24,10 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [2/3] Installing requirements (Pillow)...
-python -m pip install pillow
+echo [2/3] Installing requirements (Pillow, Requests)...
+python -m pip install pillow requests
 if errorlevel 1 (
-  echo Pillow installation failed.
+  echo Requirements installation failed.
   pause
   exit /b 1
 )
