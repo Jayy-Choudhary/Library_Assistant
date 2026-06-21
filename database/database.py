@@ -1278,6 +1278,39 @@ class Database:
             cur.execute(sql)
         return cur.fetchall()
 
+    def get_dashboard_metrics(self):
+        """Fetch all dashboard metrics in a single database call (essential for remote optimization)."""
+        total, occupied, available = self.seat_counts()
+        active, old = self.count_students()
+        self.generate_fee_notices()
+        due_students = self.get_due_students()
+        pending_notices = self.get_pending_notice_count()
+        reminder_due = len(self.get_notice_center_rows("Reminder Due"))
+        due_notices = len(self.get_notice_center_rows("Due"))
+        overdue_notices = len(self.get_notice_center_rows("Overdue"))
+
+        # Explicitly convert sqlite3.Row elements to dictionary/tuples to avoid serialization issues
+        due_students_list = []
+        for r in due_students:
+            due_students_list.append({
+                "seat_number": r["seat_number"],
+                "full_name": r["full_name"],
+                "due_amount": r["due_amount"]
+            })
+
+        return {
+            "total_seats": total,
+            "occupied_seats": occupied,
+            "available_seats": available,
+            "active_students": active,
+            "old_students": old,
+            "due_students": due_students_list,
+            "pending_notices": pending_notices,
+            "reminder_due": reminder_due,
+            "due_notices": due_notices,
+            "overdue_notices": overdue_notices
+        }
+
 
 # ── Remote Database Proxy Classes ─────────────────────────────────────────────
 
@@ -1295,7 +1328,7 @@ class RemoteDatabaseProxy:
         headers = {"X-API-Key": self.api_key}
         payload = {"method": name, "args": args, "kwargs": kwargs}
         try:
-            res = requests.post(f"{self.base_url}/api/db/call", json=payload, headers=headers, timeout=25)
+            res = requests.post(f"{self.base_url}/api/db/call", json=payload, headers=headers, timeout=8)
             if res.status_code != 200:
                 raise Exception(f"Server returned status {res.status_code}: {res.text}")
             data = res.json()

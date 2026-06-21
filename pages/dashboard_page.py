@@ -30,6 +30,20 @@ class DashboardPage(PageBase):
             self,
             ["Seat No.", "Student Name", "Due Amount (₹)"],
             {"Seat No.": 110, "Student Name": 240, "Due Amount (₹)": 160},
+
+        # Due students table
+        tk.Label(
+            self,
+            text="Fee Due Students",
+            font=FONT_HEADER,
+            bg=COLORS["bg"],
+            fg=COLORS["danger"],
+        ).pack(anchor="w", padx=28, pady=(14, 4))
+
+        tframe, self.due_tree = styled_treeview(
+            self,
+            ["Seat No.", "Student Name", "Due Amount (₹)"],
+            {"Seat No.": 110, "Student Name": 240, "Due Amount (₹)": 160},
             height=10,
         )
         tframe.pack(fill="both", expand=True, padx=28, pady=(0, 20))
@@ -41,15 +55,16 @@ class DashboardPage(PageBase):
         for w in self.cards_frame.winfo_children():
             w.destroy()
 
-        total, occ, avail = self.db.seat_counts()
-        active, _old = self.db.count_students()
-
-        self.db.generate_fee_notices()
-        due_rows = self.db.get_due_students()
-        pending_notices = self.db.get_pending_notice_count()
-        reminder_due = len(self.db.get_notice_center_rows("Reminder Due"))
-        due_notices = len(self.db.get_notice_center_rows("Due"))
-        overdue_notices = len(self.db.get_notice_center_rows("Overdue"))
+        metrics = self.db.get_dashboard_metrics()
+        total = metrics["total_seats"]
+        occ = metrics["occupied_seats"]
+        avail = metrics["available_seats"]
+        active = metrics["active_students"]
+        due_rows = metrics["due_students"]
+        pending_notices = metrics["pending_notices"]
+        reminder_due = metrics["reminder_due"]
+        due_notices = metrics["due_notices"]
+        overdue_notices = metrics["overdue_notices"]
 
         card_data = [
             ("Total Seats", total, COLORS["accent"]),
@@ -73,4 +88,3 @@ class DashboardPage(PageBase):
                 "end",
                 values=(r["seat_number"], r["full_name"], f"₹{r['due_amount']:.0f}"),
             )
-

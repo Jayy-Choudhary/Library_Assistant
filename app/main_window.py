@@ -44,10 +44,7 @@ class LibraryAssistant(tk.Tk):
         self.configure(bg=COLORS["sidebar"])
 
         self.db = Database(DB_PATH)
-        # Generate fee notices on startup
-        self.db.generate_fee_notices()
         self._current_page = None
-
         self._nav_buttons = {}
 
         self._build_layout()
@@ -129,13 +126,7 @@ class LibraryAssistant(tk.Tk):
         self.content = tk.Frame(self, bg=COLORS["bg"])
         self.content.pack(side="left", fill="both", expand=True)
 
-        self._pages = {
-            "dashboard": DashboardPage(self.content, self.db),
-            "students": StudentsPage(self.content, self.db),
-            "seats": SeatsPage(self.content, self.db),
-            "fees": FeesPage(self.content, self.db),
-            "rooms": RoomsPage(self.content, self.db),
-        }
+        self._pages = {}
 
     def _show_page(self, key):
         # Update sidebar button styles
@@ -148,13 +139,27 @@ class LibraryAssistant(tk.Tk):
                 btn.configure(bg=COLORS["sidebar"], fg=COLORS["sidebar_text"])
 
         # Hide current, show new
-        if self._current_page:
+        if self._current_page and self._current_page in self._pages:
             self._pages[self._current_page].pack_forget()
+
+        # Lazy initialization
+        if key not in self._pages:
+            if key == "dashboard":
+                self._pages["dashboard"] = DashboardPage(self.content, self.db)
+            elif key == "students":
+                self._pages["students"] = StudentsPage(self.content, self.db)
+            elif key == "seats":
+                self._pages["seats"] = SeatsPage(self.content, self.db)
+            elif key == "fees":
+                self._pages["fees"] = FeesPage(self.content, self.db)
+            elif key == "rooms":
+                self._pages["rooms"] = RoomsPage(self.content, self.db)
+
         self._pages[key].pack(fill="both", expand=True)
         self._pages[key].refresh()
         self._current_page = key
 
     def _schedule_refresh(self):
-        if self._current_page == "dashboard":
+        if self._current_page == "dashboard" and "dashboard" in self._pages:
             self._pages["dashboard"].refresh()
         self.after(60_000, self._schedule_refresh)
