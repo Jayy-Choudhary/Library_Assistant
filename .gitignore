@@ -134,3 +134,7 @@ logs/
 
 # Flutter App Exception
 !Lib_Assist_App/lib/
+
+# Local big build outputs
+Lib_Assist_App_debug.apk
+
