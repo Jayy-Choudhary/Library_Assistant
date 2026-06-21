@@ -36,6 +36,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.responses import RedirectResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        # Normalize path to handle trailing slashes robustly
+        norm_path = path.rstrip("/") if path != "/" else "/"
+        # Exclude public assets, API endpoints, public rooms page, and login page
+        is_public = (
+            norm_path == "/login" or 
+            norm_path == "/rooms/public" or 
+            norm_path == "/app.css" or 
+            norm_path.startswith("/static") or 
+            norm_path.startswith("/api") or
+            norm_path.startswith("/student_photos")
+        )
+        if not is_public:
+            session = request.cookies.get("admin_session")
+            if session != "authorized":
+                return RedirectResponse(url="/login", status_code=303)
+        return await call_next(request)
+
+app.add_middleware(AuthMiddleware)
+
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 # Ensure student_photos directory exists (may not after a fresh git clone)
@@ -96,6 +121,33 @@ def _wa_get_or_create_driver():
 def _render(request: Request, view: str, **context):
     context.setdefault("request", request)
     return templates.TemplateResponse(request, view, context)
+
+
+ADMIN_PASSWORD = os.environ.get("LIBRARY_ADMIN_PASSWORD", "admin123")
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_get(request: Request):
+    if request.cookies.get("admin_session") == "authorized":
+        return RedirectResponse(url="/dashboard", status_code=303)
+    return _render(request, "login.html", error=None)
+
+
+@app.post("/login")
+def login_post(request: Request, password: str = Form(...)):
+    if password == ADMIN_PASSWORD:
+        response = RedirectResponse(url="/dashboard", status_code=303)
+        response.set_cookie(key="admin_session", value="authorized", httponly=True, max_age=86400 * 7)
+        return response
+    else:
+        return _render(request, "login.html", error="Incorrect password. Access denied.")
+
+
+@app.get("/logout")
+def logout():
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie(key="admin_session")
+    return response
 
 
 @app.get("/app.css", include_in_schema=False)
