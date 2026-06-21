@@ -12,6 +12,8 @@ class NoticeScreen extends StatefulWidget {
 }
 
 class _NoticeScreenState extends State<NoticeScreen> {
+  static const _smsChannel = MethodChannel('com.example.lib_assist/sms');
+
   bool _isLoading = true;
   String? _errorMessage;
   List<dynamic> _notices = [];
@@ -21,6 +23,8 @@ class _NoticeScreenState extends State<NoticeScreen> {
   bool _inBulkWizard = false;
   int _bulkWizardIndex = 0;
   List<dynamic> _bulkNotices = [];
+  String _bulkWizardChannel = "WhatsApp"; // "WhatsApp" | "SMS"
+  bool _isAutoSendingSMS = false;
 
   @override
   void initState() {
@@ -34,11 +38,53 @@ class _NoticeScreenState extends State<NoticeScreen> {
       _showSnackbar("No pending notices to send.", AppColors.success);
       return;
     }
-    setState(() {
-      _bulkNotices = unsent;
-      _bulkWizardIndex = 0;
-      _inBulkWizard = true;
-    });
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('🚀 Choose Bulk Method'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Select how you want to send bulk notices:'),
+            SizedBox(height: 8),
+          ],
+        ),
+        actions: [
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() {
+                _bulkWizardChannel = "WhatsApp";
+                _bulkNotices = unsent;
+                _bulkWizardIndex = 0;
+                _inBulkWizard = true;
+                _isAutoSendingSMS = false;
+              });
+            },
+            icon: const Icon(Icons.chat_bubble_rounded),
+            label: const Text('WhatsApp'),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() {
+                _bulkWizardChannel = "SMS";
+                _bulkNotices = unsent;
+                _bulkWizardIndex = 0;
+                _inBulkWizard = true;
+                _isAutoSendingSMS = false;
+              });
+            },
+            icon: const Icon(Icons.sms_rounded),
+            label: const Text('Auto SMS (Hands-free)'),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.white),
+          ),
+        ],
+      ),
+    );
   }
 
   void _exitBulkWizard() {
@@ -63,6 +109,30 @@ class _NoticeScreenState extends State<NoticeScreen> {
     String cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
     if (cleanPhone.length == 10) {
       cleanPhone = '91$cleanPhone';
+    }
+
+    if (_bulkWizardChannel == "SMS") {
+      try {
+        await _smsChannel.invokeMethod('sendSMS', {
+          'phone': cleanPhone,
+          'message': message,
+        });
+        await ApiService.markNoticeSent(noticeId);
+        _showSnackbar("SMS sent successfully to ${notice['full_name']}! ✉️", AppColors.success);
+      } catch (e) {
+        _showSnackbar("Failed to send SMS to ${notice['full_name']}: $e", AppColors.danger);
+      }
+
+      setState(() {
+        if (_bulkWizardIndex < _bulkNotices.length - 1) {
+          _bulkWizardIndex++;
+        } else {
+          _inBulkWizard = false;
+          _showSnackbar("Bulk SMS sending completed successfully! 🎉", AppColors.success);
+          _loadNotices();
+        }
+      });
+      return;
     }
 
     final String urlStr = "https://wa.me/$cleanPhone?text=${Uri.encodeComponent(message)}";
@@ -94,6 +164,57 @@ class _NoticeScreenState extends State<NoticeScreen> {
         _showSnackbar("Bulk sending completed successfully! 🎉", AppColors.success);
         _loadNotices();
       }
+    });
+  }
+
+  Future<void> _startAutoSMSLoop() async {
+    setState(() {
+      _isAutoSendingSMS = true;
+    });
+
+    while (_isAutoSendingSMS && _bulkWizardIndex < _bulkNotices.length) {
+      final notice = _bulkNotices[_bulkWizardIndex];
+      final phone = notice['mobile_number'] ?? '';
+      final message = notice['message'] ?? '';
+      final noticeId = notice['id'];
+
+      if (phone.isNotEmpty) {
+        String cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+        if (cleanPhone.length == 10) {
+          cleanPhone = '91$cleanPhone';
+        }
+
+        try {
+          await _smsChannel.invokeMethod('sendSMS', {
+            'phone': cleanPhone,
+            'message': message,
+          });
+          await ApiService.markNoticeSent(noticeId);
+        } catch (e) {
+          debugPrint("Auto SMS failed for ${notice['full_name']}: $e");
+        }
+      }
+
+      await Future.delayed(const Duration(milliseconds: 1500));
+
+      if (!_isAutoSendingSMS) break;
+
+      setState(() {
+        if (_bulkWizardIndex < _bulkNotices.length - 1) {
+          _bulkWizardIndex++;
+        } else {
+          _inBulkWizard = false;
+          _isAutoSendingSMS = false;
+          _showSnackbar("Automated Bulk SMS sending completed! 🎉", AppColors.success);
+          _loadNotices();
+        }
+      });
+    }
+  }
+
+  void _stopAutoSMSLoop() {
+    setState(() {
+      _isAutoSendingSMS = false;
     });
   }
 
@@ -173,9 +294,24 @@ class _NoticeScreenState extends State<NoticeScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Notice ${_bulkWizardIndex + 1} of ${_bulkNotices.length}',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
+                  Row(
+                    children: [
+                      Text(
+                        'Notice ${_bulkWizardIndex + 1} of ${_bulkNotices.length}',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
+                      ),
+                      if (_isAutoSendingSMS) ...[
+                        const SizedBox(width: 8),
+                        const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   Text(
                     '${(pct * 100).toStringAsFixed(0)}% Complete',
@@ -260,7 +396,7 @@ class _NoticeScreenState extends State<NoticeScreen> {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: _bulkWizardIndex == 0 ? null : _bulkPrevCurrent,
+                  onPressed: (_isAutoSendingSMS || _bulkWizardIndex == 0) ? null : _bulkPrevCurrent,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.primary,
                     side: const BorderSide(color: AppColors.primary),
@@ -273,7 +409,7 @@ class _NoticeScreenState extends State<NoticeScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: _bulkSkipCurrent,
+                  onPressed: _isAutoSendingSMS ? null : _bulkSkipCurrent,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.textSecondary,
                     side: const BorderSide(color: AppColors.border),
@@ -289,21 +425,72 @@ class _NoticeScreenState extends State<NoticeScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: _bulkSendCurrent,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF25D366),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              elevation: 0,
+          if (_bulkWizardChannel == "SMS") ...[
+            if (_isAutoSendingSMS)
+              ElevatedButton.icon(
+                onPressed: _stopAutoSMSLoop,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.danger,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  elevation: 0,
+                ),
+                icon: const Icon(Icons.pause_circle_filled_rounded),
+                label: const Text(
+                  '🛑 Pause Auto-Send',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              )
+            else ...[
+              ElevatedButton.icon(
+                onPressed: _startAutoSMSLoop,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.accent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  elevation: 0,
+                ),
+                icon: const Icon(Icons.play_circle_filled_rounded),
+                label: const Text(
+                  '▶ Auto-Send All (SMS)',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _bulkSendCurrent,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primary),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                icon: const Icon(Icons.send_rounded, size: 18),
+                label: const Text(
+                  'Send & Next (Manual SMS)',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ] else ...[
+            ElevatedButton.icon(
+              onPressed: _bulkSendCurrent,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF25D366),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                elevation: 0,
+              ),
+              icon: const Icon(Icons.chat_bubble_rounded),
+              label: const Text(
+                'Send & Next',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
             ),
-            icon: const Icon(Icons.chat_bubble_rounded),
-            label: const Text(
-              'Send & Next',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -371,6 +558,24 @@ class _NoticeScreenState extends State<NoticeScreen> {
     }
 
     String cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+    if (cleanPhone.length == 10) {
+      cleanPhone = '91$cleanPhone';
+    }
+
+    // Try native background SMS sending first (Android only)
+    try {
+      await _smsChannel.invokeMethod('sendSMS', {
+        'phone': cleanPhone,
+        'message': message,
+      });
+      await _promptMarkSent(noticeId);
+      _showSnackbar("SMS sent in background successfully! ✉️", AppColors.success);
+      return;
+    } catch (e) {
+      debugPrint("Background SMS failed, falling back to composer: $e");
+    }
+
+    // Fallback: system SMS composer
     final Uri smsUri = Uri.parse('sms:$cleanPhone?body=${Uri.encodeComponent(message)}');
 
     try {
