@@ -80,10 +80,17 @@ class MainActivity: FlutterActivity() {
 
     private fun sendDirectSMS(phone: String, message: String, result: MethodChannel.Result) {
         try {
-            val smsManager: SmsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                this.getSystemService(SmsManager::class.java)
-            } else {
-                SmsManager.getDefault()
+            var smsManager: SmsManager? = null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                smsManager = this.getSystemService(SmsManager::class.java)
+            }
+            if (smsManager == null) {
+                @Suppress("DEPRECATION")
+                smsManager = SmsManager.getDefault()
+            }
+            if (smsManager == null) {
+                result.error("SMS_MANAGER_NULL", "System SmsManager service is not available on this device", null)
+                return
             }
             
             val parts = smsManager.divideMessage(message)
