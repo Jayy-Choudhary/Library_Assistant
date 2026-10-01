@@ -78,6 +78,7 @@ class Database:
             due_date          TEXT,
             due_amount        REAL NOT NULL DEFAULT 0,
             last_payment_date TEXT,
+            advance_balance   REAL NOT NULL DEFAULT 0,
             FOREIGN KEY (student_id) REFERENCES students(id)
         );
 
@@ -227,6 +228,8 @@ class Database:
             to_add.append("ALTER TABLE fees ADD COLUMN notice_date TEXT")
         if "last_notice_generated" not in cols:
             to_add.append("ALTER TABLE fees ADD COLUMN last_notice_generated TEXT")
+        if "advance_balance" not in cols:
+            to_add.append("ALTER TABLE fees ADD COLUMN advance_balance REAL NOT NULL DEFAULT 0")
 
         for sql in to_add:
             cur.execute(sql)
@@ -542,23 +545,28 @@ class Database:
 
         try:
             adm_dt = datetime.strptime(admission_date, "%Y-%m-%d").date()
-            due_date = self._add_month(adm_dt).isoformat()
+            # Fee is due from Day 0 (admission day), payable immediately.
+            due_date = adm_dt.isoformat()
+            next_due_date = self._add_month(adm_dt).isoformat()
             notice_date = (
-                datetime.strptime(due_date, "%Y-%m-%d").date()
-                - timedelta(days=GRACE_PERIOD_DAYS)
+                adm_dt - timedelta(days=GRACE_PERIOD_DAYS)
             ).isoformat()
+            # If notice_date falls before admission, set it to admission day.
+            if notice_date < due_date:
+                notice_date = due_date
         except Exception:
             due_date = admission_date
+            next_due_date = admission_date
             notice_date = None
 
-        # Create fee record
+        # Create fee record — due_amount = monthly_fee (payable from Day 0)
         self.conn.execute(
             """
             INSERT INTO fees
                 (student_id, monthly_fee, due_date, due_amount, next_due_date, notice_date)
-            VALUES (?, ?, ?, 0, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (student_id, monthly_fee, due_date, due_date, notice_date),
+            (student_id, monthly_fee, due_date, monthly_fee, next_due_date, notice_date),
         )
         self.conn.commit()
         return student_id
@@ -687,17 +695,25 @@ class Database:
 
     # ── Fees ───────────────────────────────────
     def get_fees_with_students(self):
-        return self.conn.execute("""
+        rows = self.conn.execute("""
             SELECT s.seat_number, s.full_name, s.id as student_id,
                    f.id as fee_id, f.monthly_fee,
                    f.due_date, f.due_amount,
                    f.next_due_date, f.notice_date,
-                   f.last_payment_date
+                   f.last_payment_date,
+                   f.advance_balance
             FROM students s
             JOIN fees f ON s.id = f.student_id
             WHERE s.status = 'Active'
             ORDER BY s.seat_number
         """).fetchall()
+
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["status"] = self.get_fee_status(int(r["student_id"]))
+            result.append(d)
+        return result
 
     def get_due_students(self):
         return self.conn.execute("""
@@ -721,37 +737,89 @@ class Database:
         if amount <= 0:
             return False, "Payment amount must be greater than 0."
 
+        self._ensure_subscription_fields_for_student(student_id)
         fee = self.conn.execute(
             "SELECT * FROM fees WHERE student_id=?", (student_id,)
         ).fetchone()
         if not fee:
             return False, "Fee record not found."
 
-        # Authoritative cycle due_date is the current fees.due_date.
-        current_due_date = fee["due_date"]
+        monthly_fee = float(fee["monthly_fee"] or 0)
+        if monthly_fee <= 0:
+            return False, "Monthly fee is not set for this student."
 
         current_due = float(fee["due_amount"] or 0)
-        if current_due <= 0:
-            return False, "No due amount is currently payable for this student."
+        current_advance = float(fee["advance_balance"] or 0) if "advance_balance" in fee.keys() else 0.0
+        current_due_date = fee["due_date"]
 
-        new_due = max(0, current_due - amount)
-        self.conn.execute(
-            "UPDATE fees SET due_amount=?, last_payment_date=? WHERE student_id=?",
-            (new_due, payment_date, student_id),
-        )
+        # Record payment in payment_history
         self.conn.execute(
             "INSERT INTO payment_history (student_id, amount, payment_date, notes) VALUES (?, ?, ?, ?)",
             (student_id, amount, payment_date, notes),
         )
 
-        # If the cycle is fully settled, close current notices and advance even
-        # when no notice was generated for this cycle.
-        if float(new_due) <= 0 and current_due_date:
-            self.mark_notice_paid(student_id, current_due_date)
-            self._advance_fee_cycle(student_id)
+        available_funds = amount + current_advance
+        months_advanced = 0
 
+        # 1. Clear current cycle due if any
+        if current_due > 0:
+            if available_funds < current_due:
+                # Partial payment: only covers part of the current cycle
+                new_due = current_due - available_funds
+                self.conn.execute(
+                    "UPDATE fees SET due_amount=?, advance_balance=0, last_payment_date=? WHERE student_id=?",
+                    (new_due, payment_date, student_id),
+                )
+                self.conn.commit()
+                return True, f"Payment of ₹{amount:.0f} recorded. Remaining due: ₹{new_due:.0f}"
+            else:
+                # Fully settled current cycle
+                available_funds -= current_due
+                if current_due_date:
+                    self.mark_notice_paid(student_id, current_due_date)
+                self._advance_fee_cycle(student_id)
+                months_advanced += 1
+
+        # 2. Advance any full months covered by remaining available_funds
+        while available_funds >= monthly_fee:
+            available_funds -= monthly_fee
+            self._advance_fee_cycle(student_id)
+            months_advanced += 1
+
+        # 3. Store any leftover credit in advance_balance (to discount the next cycle)
+        remaining_advance = round(available_funds, 2)
+        self.conn.execute(
+            "UPDATE fees SET due_amount=0, advance_balance=?, last_payment_date=? WHERE student_id=?",
+            (remaining_advance, payment_date, student_id),
+        )
         self.conn.commit()
-        return True, f"Payment recorded. Remaining due: ₹{new_due:.0f}"
+
+        if months_advanced > 0 and remaining_advance > 0:
+            msg = (
+                f"Payment of ₹{amount:.0f} recorded. "
+                f"Subscription advanced by {months_advanced} month(s) with ₹{remaining_advance:.0f} advance credit for next cycle."
+            )
+        elif months_advanced > 0:
+            msg = f"Payment of ₹{amount:.0f} recorded. Subscription advanced by {months_advanced} month(s)."
+        elif remaining_advance > 0:
+            msg = f"Advance payment of ₹{remaining_advance:.0f} credited toward upcoming cycle."
+        else:
+            msg = f"Payment of ₹{amount:.0f} recorded successfully."
+
+        return True, msg
+
+    def record_advance_payment(self, student_id, num_months, payment_date, notes=""):
+        """Convenience wrapper for advance payment by month count or direct amount."""
+        fee = self.conn.execute("SELECT monthly_fee FROM fees WHERE student_id=?", (student_id,)).fetchone()
+        if not fee:
+            return False, "Fee record not found."
+        m_fee = float(fee["monthly_fee"] or 0)
+        try:
+            val = float(num_months)
+            amount = val * m_fee if val <= 36 else val
+        except Exception:
+            amount = m_fee
+        return self.record_payment(student_id, amount, payment_date, notes)
 
     def update_monthly_fee(self, student_id, monthly_fee, new_due=None):
         if new_due is not None:
@@ -924,9 +992,8 @@ class Database:
 
         due_to_set = None
         if not due_date:
-            due_to_set = (
-                next_due_to_set or next_due_date or self._add_month(adm_dt).isoformat()
-            )
+            # Day 0 model: due starts on admission date, not a month later.
+            due_to_set = adm_dt.isoformat()
 
         if next_due_to_set and not notice_date:
             # notice_date = next_due_date - GRACE_PERIOD_DAYS
@@ -1259,17 +1326,24 @@ class Database:
 
             current_due = float(due_amount or 0)
             if current_due <= 0:
-                monthly_fee = self.conn.execute(
-                    "SELECT monthly_fee FROM fees WHERE student_id=?",
+                fee_record = self.conn.execute(
+                    "SELECT monthly_fee, advance_balance FROM fees WHERE student_id=?",
                     (student_id,),
                 ).fetchone()
-                next_due = float(monthly_fee["monthly_fee"] or 0) if monthly_fee else 0
-                if next_due <= 0:
+                m_fee = float(fee_record["monthly_fee"] or 0) if fee_record else 0
+                adv_bal = float(fee_record["advance_balance"] or 0) if (fee_record and "advance_balance" in fee_record.keys()) else 0
+                if m_fee <= 0:
                     continue
+                # Deduct any advance balance from this upcoming cycle
+                next_due = max(0.0, m_fee - adv_bal)
                 self.conn.execute(
-                    "UPDATE fees SET due_amount=? WHERE student_id=?",
+                    "UPDATE fees SET due_amount=?, advance_balance=0 WHERE student_id=?",
                     (next_due, student_id),
                 )
+                if next_due <= 0:
+                    # If advance credit fully cleared this cycle, advance to next cycle
+                    self._advance_fee_cycle(student_id)
+                    continue
 
             # Prevent duplicates (UNIQUE(student_id, due_date)).
             existing = self.conn.execute(

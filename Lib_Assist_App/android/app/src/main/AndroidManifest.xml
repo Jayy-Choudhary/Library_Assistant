@@ -2,7 +2,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     <application
-        android:label="lib_assist_app"
+        android:label="Library Assistant"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

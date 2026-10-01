@@ -31,6 +31,17 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
   void initState() {
     super.initState();
     _loadData();
+    ApiService.syncEvent.addListener(_onSync);
+  }
+
+  void _onSync() {
+    if (mounted) _loadData();
+  }
+
+  @override
+  void dispose() {
+    ApiService.syncEvent.removeListener(_onSync);
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -236,8 +247,8 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
             width: double.infinity,
             height: 52,
             child: ElevatedButton.icon(
-              onPressed: (isActive && dueAmount > 0)
-                  ? () => _showRecordPaymentDialog(context, dueAmount)
+              onPressed: isActive
+                  ? () => _showRecordPaymentDialog(context, dueAmount, monthlyFee)
                   : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.accent,
@@ -252,7 +263,7 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
               label: Text(
                 dueAmount > 0
                     ? 'Record Payment (₹${dueAmount.toStringAsFixed(0)})'
-                    : 'No Dues Pending',
+                    : 'Pay / Advance Pay',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
@@ -502,9 +513,31 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
     );
   }
 
-  void _showRecordPaymentDialog(BuildContext context, double currentDue) {
+  void _showRecordPaymentDialog(BuildContext context, double currentDue, double monthlyFee) {
+    if (!ApiService.isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.wifi_off_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('Offline: Recording fee payments is restricted while offline to prevent ledger conflicts across devices.'),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.danger,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     final formKey = GlobalKey<FormState>();
-    final amountController = TextEditingController(text: currentDue.toStringAsFixed(0));
+    final amountController = TextEditingController(
+      text: currentDue > 0 ? currentDue.toStringAsFixed(0) : (monthlyFee > 0 ? monthlyFee.toStringAsFixed(0) : '600'),
+    );
     final notesController = TextEditingController();
     String selectedDateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
@@ -514,23 +547,111 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (stContext, setDialogState) {
+            final double enteredAmount = double.tryParse(amountController.text.trim()) ?? 0;
+
+            // Live calculation breakdown
+            String? calculationNote;
+            Color noteColor = AppColors.accent;
+
+            if (enteredAmount > 0 && monthlyFee > 0) {
+              if (currentDue > 0) {
+                if (enteredAmount < currentDue) {
+                  final remaining = currentDue - enteredAmount;
+                  calculationNote = '⚠️ Partial payment: ₹${remaining.toStringAsFixed(0)} will remain due for current cycle.';
+                  noteColor = const Color(0xFFFB923C);
+                } else if (enteredAmount == currentDue) {
+                  calculationNote = '✅ Clears current due in full (cycle advances 1 month).';
+                  noteColor = AppColors.success;
+                } else {
+                  final extra = enteredAmount - currentDue;
+                  final extraMonths = (extra / monthlyFee).floor();
+                  final leftoverCredit = extra % monthlyFee;
+                  final totalMonths = 1 + extraMonths;
+                  if (leftoverCredit == 0) {
+                    calculationNote = '🎉 Covers $totalMonths month(s) in full! Subscription advances $totalMonths month(s).';
+                    noteColor = AppColors.success;
+                  } else {
+                    final nextDueWhenCycleArrives = monthlyFee - leftoverCredit;
+                    calculationNote = '🎉 Covers $totalMonths month(s) in full + ₹${leftoverCredit.toStringAsFixed(0)} advance credit! Next cycle due will be only ₹${nextDueWhenCycleArrives.toStringAsFixed(0)}.';
+                    noteColor = AppColors.accent;
+                  }
+                }
+              } else {
+                // No current due: pre-payment
+                final monthsCovered = (enteredAmount / monthlyFee).floor();
+                final leftoverCredit = enteredAmount % monthlyFee;
+                if (leftoverCredit == 0) {
+                  calculationNote = '🎉 Advance payment covering $monthsCovered month(s) in full!';
+                  noteColor = AppColors.success;
+                } else if (monthsCovered > 0) {
+                  final nextDue = monthlyFee - leftoverCredit;
+                  calculationNote = '🎉 Advance covering $monthsCovered month(s) + ₹${leftoverCredit.toStringAsFixed(0)} credit for next cycle (Next due: ₹${nextDue.toStringAsFixed(0)}).';
+                  noteColor = AppColors.accent;
+                } else {
+                  final nextDue = monthlyFee - enteredAmount;
+                  calculationNote = 'ℹ️ ₹${enteredAmount.toStringAsFixed(0)} advance credit will discount next month\'s fee (Next due: ₹${nextDue.toStringAsFixed(0)}).';
+                  noteColor = AppColors.accent;
+                }
+              }
+            }
+
             return AlertDialog(
-              title: const Text('Record Fee Payment'),
+              title: const Row(
+                children: [
+                  Icon(Icons.payment_rounded, color: AppColors.accent),
+                  SizedBox(width: 8),
+                  Text('Record Payment'),
+                ],
+              ),
               content: Form(
                 key: formKey,
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Fee Info Banner
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.04),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Monthly Fee: ₹${monthlyFee.toStringAsFixed(0)}',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary),
+                            ),
+                            Text(
+                              currentDue > 0 ? 'Current Due: ₹${currentDue.toStringAsFixed(0)}' : 'No Due (Paid)',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: currentDue > 0 ? AppColors.danger : AppColors.success,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
                       // Amount input
                       TextFormField(
                         controller: amountController,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         decoration: const InputDecoration(
                           labelText: 'Payment Amount (₹)',
+                          hintText: 'Enter amount paid',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.currency_rupee_rounded),
                         ),
+                        onChanged: (val) {
+                          setDialogState(() {});
+                        },
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) {
                             return 'Please enter amount';
@@ -542,6 +663,28 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                           return null;
                         },
                       ),
+
+                      // Live calculation feedback
+                      if (calculationNote != null) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: noteColor.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: noteColor.withOpacity(0.3)),
+                          ),
+                          child: Text(
+                            calculationNote,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: noteColor,
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
 
                       // Date selector picker
@@ -579,8 +722,8 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                         controller: notesController,
                         maxLines: 2,
                         decoration: const InputDecoration(
-                          labelText: 'Notes / Payment Mode',
-                          hintText: 'e.g. Cash, UPI, GPay Ref#',
+                          labelText: 'Notes / Payment Mode (Optional)',
+                          hintText: 'e.g. Cash, UPI, GPay, Advance',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.edit_note_rounded),
                         ),

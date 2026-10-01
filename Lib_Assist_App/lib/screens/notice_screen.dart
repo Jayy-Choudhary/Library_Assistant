@@ -30,6 +30,17 @@ class _NoticeScreenState extends State<NoticeScreen> {
   void initState() {
     super.initState();
     _loadNotices();
+    ApiService.syncEvent.addListener(_onSync);
+  }
+
+  void _onSync() {
+    if (mounted) _loadNotices();
+  }
+
+  @override
+  void dispose() {
+    ApiService.syncEvent.removeListener(_onSync);
+    super.dispose();
   }
 
   void _startBulkWizard() {
@@ -753,7 +764,6 @@ class _NoticeScreenState extends State<NoticeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasUnsentNotices = _notices.any((n) => n['sent_at'] == null);
     return Scaffold(
       appBar: AppBar(
         title: const Text('🔔 Notice Center'),

@@ -26,6 +26,17 @@ class _RoomsScreenState extends State<RoomsScreen> {
   void initState() {
     super.initState();
     _loadRoomData();
+    ApiService.syncEvent.addListener(_onSync);
+  }
+
+  void _onSync() {
+    if (mounted) _loadRoomData();
+  }
+
+  @override
+  void dispose() {
+    ApiService.syncEvent.removeListener(_onSync);
+    super.dispose();
   }
 
   Future<void> _loadRoomData() async {
@@ -311,7 +322,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
                 final result = await Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const StudentFormScreen(), // Will open form
+                    builder: (context) => StudentFormScreen(preselectedSeat: seatNumber),
                   ),
                 );
                 if (result == true) {

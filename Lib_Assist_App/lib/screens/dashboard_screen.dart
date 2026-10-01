@@ -23,6 +23,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _loadMetrics();
+    ApiService.syncEvent.addListener(_onSync);
+  }
+
+  void _onSync() {
+    if (mounted) _loadMetrics();
+  }
+
+  @override
+  void dispose() {
+    ApiService.syncEvent.removeListener(_onSync);
+    super.dispose();
   }
 
   Future<void> _loadMetrics() async {

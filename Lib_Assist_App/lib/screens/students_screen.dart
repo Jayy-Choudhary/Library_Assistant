@@ -23,6 +23,18 @@ class _StudentsScreenState extends State<StudentsScreen> {
   void initState() {
     super.initState();
     _loadStudents();
+    ApiService.syncEvent.addListener(_onSync);
+  }
+
+  void _onSync() {
+    if (mounted) _loadStudents();
+  }
+
+  @override
+  void dispose() {
+    ApiService.syncEvent.removeListener(_onSync);
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadStudents() async {
@@ -291,15 +303,29 @@ class _StudentsScreenState extends State<StudentsScreen> {
   }
 
   Widget _buildEmptyView() {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.people_outline_rounded, color: AppColors.textSecondary, size: 64),
-          SizedBox(height: 16),
-          Text(
-            'No students found',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
+    return RefreshIndicator(
+      onRefresh: _loadStudents,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 100),
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.people_outline_rounded, color: AppColors.textSecondary, size: 64),
+                SizedBox(height: 16),
+                Text(
+                  'No students found',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Pull down to refresh',
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
           ),
         ],
       ),

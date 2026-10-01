@@ -75,11 +75,81 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    ApiService.syncEvent.addListener(_handleSyncEvent);
+  }
+
+  @override
+  void dispose() {
+    ApiService.syncEvent.removeListener(_handleSyncEvent);
+    super.dispose();
+  }
+
+  void _handleSyncEvent() {
+    if (mounted && ApiService.isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.cloud_done_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('🟢 Back Online: Synced with latest database!'),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      body: Column(
+        children: [
+          // Persistent Offline Status Indicator
+          ValueListenableBuilder<bool>(
+            valueListenable: ApiService.isOnline,
+            builder: (context, online, _) {
+              if (online) return const SizedBox.shrink();
+              return Container(
+                width: double.infinity,
+                color: const Color(0xFFD97706), // Warm amber-orange
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                child: const SafeArea(
+                  top: true,
+                  bottom: false,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.wifi_off_rounded, color: Colors.white, size: 16),
+                      SizedBox(width: 8),
+                      Text(
+                        'Offline Mode (Read-Only) • Local Cache Active',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          Expanded(
+            child: IndexedStack(
+              index: _currentIndex,
+              children: _screens,
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,

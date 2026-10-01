@@ -15,8 +15,10 @@ class _FeesScreenState extends State<FeesScreen> with SingleTickerProviderStateM
   bool _isLoading = true;
   String? _errorMessage;
   List<Map<String, dynamic>> _feeRows = [];
-  String _filter = 'All'; // All, Due Only
+  String _filter = 'All'; // All, Due Only, Paid, Reminder, Due, Overdue
   late TabController _tabController;
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
 
   final List<Map<String, dynamic>> _filterTabs = [
     {'label': 'All', 'icon': Icons.list_alt_rounded},
@@ -35,11 +37,18 @@ class _FeesScreenState extends State<FeesScreen> with SingleTickerProviderStateM
       }
     });
     _loadFees();
+    ApiService.syncEvent.addListener(_onSync);
+  }
+
+  void _onSync() {
+    if (mounted) _loadFees();
   }
 
   @override
   void dispose() {
+    ApiService.syncEvent.removeListener(_onSync);
     _tabController.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -53,18 +62,20 @@ class _FeesScreenState extends State<FeesScreen> with SingleTickerProviderStateM
       // Trigger server-side notice generation first
       await ApiService.generateFeeNotices();
 
-      // Fetch all fee rows
+      // Fetch all fee rows (includes pre-computed status from server)
       final rawRows = await ApiService.getFeesWithStudents();
       
-      // Fetch status for each student
+      // Enrich only if status missing (fallback)
       List<Map<String, dynamic>> enrichedRows = [];
       for (final raw in rawRows) {
         final row = Map<String, dynamic>.from(raw);
-        final studentId = int.parse(row['student_id'].toString());
-        try {
-          row['status'] = await ApiService.getFeeStatus(studentId);
-        } catch (_) {
-          row['status'] = 'Active';
+        if (row['status'] == null) {
+          final studentId = int.parse(row['student_id'].toString());
+          try {
+            row['status'] = await ApiService.getFeeStatus(studentId);
+          } catch (_) {
+            row['status'] = 'Active';
+          }
         }
         enrichedRows.add(row);
       }
@@ -82,13 +93,35 @@ class _FeesScreenState extends State<FeesScreen> with SingleTickerProviderStateM
   }
 
   List<Map<String, dynamic>> get _filteredRows {
-    if (_filter == 'Due Only') {
-      return _feeRows.where((r) {
+    return _feeRows.where((r) {
+      // 1. Status Filter
+      if (_filter == 'Due Only') {
         final status = r['status']?.toString() ?? '';
-        return status == 'Reminder Due' || status == 'Due' || status == 'Overdue';
-      }).toList();
-    }
-    return _feeRows;
+        if (status != 'Reminder Due' && status != 'Due' && status != 'Overdue') {
+          return false;
+        }
+      } else if (_filter == 'Paid') {
+        if (r['status']?.toString() != 'Paid') return false;
+      } else if (_filter == 'Reminder') {
+        if (r['status']?.toString() != 'Reminder Due') return false;
+      } else if (_filter == 'Due') {
+        if (r['status']?.toString() != 'Due') return false;
+      } else if (_filter == 'Overdue') {
+        if (r['status']?.toString() != 'Overdue') return false;
+      }
+
+      // 2. Search Query filter (matches student name or seat number)
+      if (_searchQuery.isNotEmpty) {
+        final name = (r['full_name']?.toString() ?? '').toLowerCase();
+        final seat = (r['seat_number']?.toString() ?? '').toLowerCase();
+        final q = _searchQuery.toLowerCase();
+        if (!name.contains(q) && !seat.contains(q)) {
+          return false;
+        }
+      }
+
+      return true;
+    }).toList();
   }
 
   // Summary counters
@@ -195,6 +228,7 @@ class _FeesScreenState extends State<FeesScreen> with SingleTickerProviderStateM
                     physics: const AlwaysScrollableScrollPhysics(),
                     children: [
                       _buildSummaryStrip(),
+                      _buildSearchBar(),
                       _buildFeeList(),
                       const SizedBox(height: 24),
                     ],
@@ -328,32 +362,95 @@ class _FeesScreenState extends State<FeesScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildStatusChip(String label, int count, Color color) {
-    return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.25)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+    final bool isSelected = _filter == label;
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () {
+        setState(() {
+          if (_filter == label) {
+            _filter = 'All';
+            _tabController.animateTo(0);
+          } else {
+            _filter = label;
+          }
+        });
+      },
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.25) : color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? color : color.withOpacity(0.25),
+            width: isSelected ? 1.5 : 1.0,
           ),
-          const SizedBox(width: 6),
-          Text(
-            '$label: $count',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: color,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: color),
             ),
+            const SizedBox(width: 6),
+            Text(
+              '$label: $count',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: TextField(
+        controller: _searchCtrl,
+        onChanged: (val) {
+          setState(() {
+            _searchQuery = val;
+          });
+        },
+        style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+        decoration: InputDecoration(
+          hintText: 'Search student name or seat...',
+          hintStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textSecondary, size: 20),
+          suffixIcon: _searchCtrl.text.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear_rounded, color: AppColors.textSecondary, size: 18),
+                  onPressed: () {
+                    _searchCtrl.clear();
+                    setState(() {
+                      _searchQuery = '';
+                    });
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: AppColors.cardBg,
+          contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppColors.textSecondary.withOpacity(0.2)),
           ),
-        ],
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppColors.textSecondary.withOpacity(0.2)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
+          ),
+        ),
       ),
     );
   }
@@ -398,6 +495,7 @@ class _FeesScreenState extends State<FeesScreen> with SingleTickerProviderStateM
     final fullName = row['full_name']?.toString() ?? 'Unknown';
     final monthlyFee = double.tryParse(row['monthly_fee']?.toString() ?? '0') ?? 0;
     final dueAmount = double.tryParse(row['due_amount']?.toString() ?? '0') ?? 0;
+    final advanceBalance = double.tryParse(row['advance_balance']?.toString() ?? '0') ?? 0;
     final dueDate = row['due_date']?.toString();
     final lastPayment = row['last_payment_date']?.toString();
     final status = row['status']?.toString() ?? 'Active';
@@ -504,13 +602,25 @@ class _FeesScreenState extends State<FeesScreen> with SingleTickerProviderStateM
                   ),
                   child: Row(
                     children: [
-                      // Due amount
+                      // Due amount or Advance Credit
                       Expanded(
-                        child: _buildDetailItem(
-                          'Due Amount',
-                          '₹${dueAmount.toStringAsFixed(0)}',
-                          dueAmount > 0 ? AppColors.danger : AppColors.success,
-                        ),
+                        child: dueAmount > 0
+                            ? _buildDetailItem(
+                                'Due Amount',
+                                '₹${dueAmount.toStringAsFixed(0)}',
+                                AppColors.danger,
+                              )
+                            : (advanceBalance > 0
+                                ? _buildDetailItem(
+                                    'Advance Credit',
+                                    '₹${advanceBalance.toStringAsFixed(0)}',
+                                    AppColors.accent,
+                                  )
+                                : _buildDetailItem(
+                                    'Due Amount',
+                                    '₹0',
+                                    AppColors.success,
+                                  )),
                       ),
                       // Due date
                       if (dueDate != null)

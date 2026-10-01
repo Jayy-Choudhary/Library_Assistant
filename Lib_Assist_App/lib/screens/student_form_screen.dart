@@ -7,10 +7,12 @@ import '../services/api_service.dart';
 
 class StudentFormScreen extends StatefulWidget {
   final int? studentId; // If null, we are in ADD mode. Otherwise EDIT mode.
+  final String? preselectedSeat; // Pre-fill seat when coming from Room Layout
 
   const StudentFormScreen({
     super.key,
     this.studentId,
+    this.preselectedSeat,
   });
 
   @override
@@ -122,9 +124,13 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
           }
         }
 
-        // Auto select first option if none is selected
+        // Auto select: prefer preselectedSeat from Room Layout, then first available
         if (_selectedSeat == null && _compatibleSeats.isNotEmpty) {
-          _selectedSeat = _compatibleSeats.first;
+          if (widget.preselectedSeat != null && _compatibleSeats.contains(widget.preselectedSeat)) {
+            _selectedSeat = widget.preselectedSeat;
+          } else {
+            _selectedSeat = _compatibleSeats.first;
+          }
         }
       });
     } catch (e) {
@@ -254,6 +260,26 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
   }
 
   Future<void> _saveForm() async {
+    if (!ApiService.isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.wifi_off_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('Offline: Cannot save admissions/updates without an active internet connection to avoid seat assignment conflicts.'),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.danger,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) return;
     if (_selectedSeat == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -561,16 +587,42 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
       appBar: AppBar(
         title: Text(isEditMode ? '✍️ Edit Student Profile' : '🎓 Student Admission'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Photo Section
-              _buildPhotoSection(),
-              const SizedBox(height: 24),
+      body: Column(
+        children: [
+          ValueListenableBuilder<bool>(
+            valueListenable: ApiService.isOnline,
+            builder: (context, online, _) {
+              if (online) return const SizedBox.shrink();
+              return Container(
+                width: double.infinity,
+                color: const Color(0xFFD97706),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: const Row(
+                  children: [
+                    Icon(Icons.wifi_off_rounded, color: Colors.white, size: 16),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Offline Mode: Submitting admissions is disabled to prevent conflicts.',
+                        style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Photo Section
+                    _buildPhotoSection(),
+                    const SizedBox(height: 24),
 
               // Banner info
               Container(
@@ -774,6 +826,9 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
           ),
         ),
       ),
+    ),
+  ],
+),
     );
   }
 }
